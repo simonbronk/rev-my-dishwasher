@@ -10,7 +10,16 @@
 (function (global) {
   'use strict';
 
-  var DSP_URL = 'js/engine-dsp.js';
+  // Resolve the worklet next to this file, including under a GitHub Pages path prefix.
+  var DSP_URL = (function () {
+    try {
+      var script = global.document && global.document.currentScript;
+      if (script && script.src) return new URL('engine-dsp.js', script.src).href;
+      return new URL('js/engine-dsp.js', global.location.href).href;
+    } catch (e) {
+      return 'js/engine-dsp.js';
+    }
+  })();
   var FADE_S = 0.35;
 
   // Safety clipper: a waveshaper that leaves the signal untouched up to
@@ -80,37 +89,46 @@
 
   // Must be called from a user gesture (click/tap) the first time.
   EngineAudio.prototype.start = function (engineCfg) {
-    if (!EngineAudio.supported()) return Promise.reject(new Error('Web Audio is not supported by this browser.'));
-    // iOS: play through the media channel so the ringer/silent switch doesn't mute us.
-    try { if (global.navigator.audioSession) global.navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
-    var ctx = this._context(), self = this;
-    clearTimeout(this.suspendTimer);
-    var resumed = ctx.state === 'running' ? Promise.resolve() : ctx.resume();
-    if (!this.ready) {
-      // Built once per car; a car change while it's being built discards it.
-      var gen = this.engineGen;
-      var ready = this.ready = this._createNode(engineCfg).then(function (synth) {
-        if (gen !== self.engineGen) {
-          synth.node.disconnect();
-          return;
-        }
-        var fader = ctx.createGain();
-        synth.node.connect(fader);
-        fader.connect(self.comp);
-        self.node = synth.node;
-        self.fader = fader;
-        self.post = synth.post;
-      }, function (err) {
-        if (self.ready === ready) self.ready = null;
-        throw err;
+    var self = this;
+    if (!EngineAudio.supported()) return Promise.reject(new Error('Questo browser non supporta Web Audio.'));
+    try {
+      try { if (global.navigator.audioSession) global.navigator.audioSession.type = 'playback'; } catch (ignore) {}
+      var ctx = this._context();
+      clearTimeout(this.suspendTimer);
+
+      var resumed = ctx.state === 'running' ? Promise.resolve() : ctx.resume().then(function () {
+        if (ctx.state !== 'running') throw new Error('Il browser non ha riattivato l’audio (' + ctx.state + ').');
       });
+
+      if (!this.ready) {
+        var gen = this.engineGen;
+        var ready = this.ready = this._createNode(engineCfg).then(function (synth) {
+          if (!synth || !synth.node || gen !== self.engineGen) {
+            if (synth && synth.node) synth.node.disconnect();
+            throw new Error('Il sintetizzatore non è riuscito a creare il nodo audio.');
+          }
+          var fader = ctx.createGain();
+          synth.node.connect(fader);
+          fader.connect(self.comp);
+          self.node = synth.node;
+          self.fader = fader;
+          self.post = synth.post;
+        }).catch(function (err) {
+          if (self.ready === ready) self.ready = null;
+          throw err;
+        });
+      }
+
+      return Promise.all([resumed, this.ready]).then(function () {
+        if (ctx.state !== 'running') throw new Error('AudioContext non attivo (' + ctx.state + ').');
+        var g = self.master.gain, now = ctx.currentTime;
+        g.cancelScheduledValues(now);
+        g.setValueAtTime(g.value, now);
+        g.linearRampToValueAtTime(self._gainFor(self.volume), now + FADE_S);
+      });
+    } catch (err) {
+      return Promise.reject(err);
     }
-    return Promise.all([resumed, this.ready]).then(function () {
-      var g = self.master.gain, now = ctx.currentTime;
-      g.cancelScheduledValues(now);
-      g.setValueAtTime(g.value, now);
-      g.linearRampToValueAtTime(self._gainFor(self.volume), now + FADE_S);
-    });
   };
 
   // Another car: fade out its synthesizer (if any) and let the next start()
@@ -136,7 +154,9 @@
     if (ctx.audioWorklet && global.AudioWorkletNode) {
       if (!this.workletLoad) this.workletLoad = ctx.audioWorklet.addModule(DSP_URL);
       return this.workletLoad.then(function () {
-        var node = new AudioWorkletNode(ctx, 'engine-processor', {
+        var WorkletNode = global.AudioWorkletNode;
+        if (!WorkletNode) throw new Error('AudioWorkletNode non disponibile.');
+        var node = new WorkletNode(ctx, 'engine-processor', {
           numberOfInputs: 0,
           numberOfOutputs: 1,
           outputChannelCount: [2],
@@ -153,6 +173,9 @@
   };
 
   EngineAudio.prototype._createScriptNode = function (engineCfg, seed) {
+    if (!global.EngineDSP || typeof global.EngineDSP.create !== 'function') {
+      throw new Error('Il modulo engine-dsp.js non è stato caricato: EngineDSP non disponibile.');
+    }
     var dsp = global.EngineDSP.create(this.ctx.sampleRate, engineCfg, seed);
     var node = this.ctx.createScriptProcessor(1024, 1, 2);
     node.onaudioprocess = function (e) {
