@@ -1,6 +1,11 @@
 (function () {
   'use strict';
 
+  // Shared numeric clamp used by the live dashboard/update loop.
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
   var STORE_KEY = 'rev-my-dishwasher.settings.v1';
   var defaults = { carId: 'city-shifter', mode: 'test', manual: false, volume: 0.7, character: 0.65, crackle: 0.25, intensity: 0.55, units: 'kmh' };
   var settings = readSettings();
