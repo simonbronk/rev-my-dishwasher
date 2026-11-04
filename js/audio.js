@@ -177,7 +177,7 @@
       throw new Error('Il modulo engine-dsp.js non è stato caricato: EngineDSP non disponibile.');
     }
     var dsp = global.EngineDSP.create(this.ctx.sampleRate, engineCfg, seed);
-    var node = this.ctx.createScriptProcessor(1024, 1, 2);
+    var node = this.ctx.createScriptProcessor(1024, 0, 2);
     node.onaudioprocess = function (e) {
       var out = e.outputBuffer;
       dsp.process(out.getChannelData(0), out.getChannelData(1), out.length);
