@@ -28,6 +28,7 @@
     throttleText: $('throttleText'), throttleMeter: $('throttleMeter'), loadText: $('loadText'), loadMeter: $('loadMeter'), driveState: $('driveState'), gpsAccuracy: $('gpsAccuracy'),
     carSelect: $('carSelect'), carName: $('carName'), carTagline: $('carTagline'), engineBadge: $('engineBadge'), startButton: $('startButton'), startLabel: $('startLabel'), startNote: $('startNote'),
     testControls: $('testControls'), manualGears: $('manualGears'), manualGearLabel: $('manualGearLabel'), notice: $('notice'),
+    runtimeStatus: $('runtimeStatus'),
     volumeSlider: $('volumeSlider'), characterSlider: $('characterSlider'), crackleSlider: $('crackleSlider'), intensitySlider: $('intensitySlider')
   };
 
@@ -150,7 +151,10 @@
       setNotice('Motore acceso. Regola il volume e prova una breve accelerata.');
     }).catch(function (err) {
       ui.startButton.disabled = false;
-      setNotice('Impossibile avviare l’audio: ' + (err && err.message ? err.message : 'errore Web Audio.'), 'error');
+      var message = err && err.message ? err.message : 'errore Web Audio.';
+      setNotice('Impossibile avviare l’audio: ' + message, 'error');
+      if (ui.runtimeStatus) ui.runtimeStatus.textContent = 'AUDIO ERRORE: ' + message;
+      console.error('Rev My Dishwasher START:', err);
     });
   }
 
@@ -230,7 +234,8 @@
       audio.setParams({ rpm: rpm, load: 0.72, overrun: 0, cut: 0, character: settings.character, crackle: settings.crackle, whinePitch: 1, whineLevel: 1, speed: 9, rev: e.type === 'thruster' ? 0.8 : 0 });
       text(ui.audioStatus.querySelector('span'), 'TEST AUDIO');
       ui.audioStatus.classList.add('active');
-      setNotice('Test audio in corso: se senti il suono, l’uscita audio è attiva.');
+      setNotice('Test audio in corso.');
+      if (ui.runtimeStatus) ui.runtimeStatus.textContent = 'AUDIO: ' + audio.kind + ' · ' + audio.ctx.state + ' · ' + audio.ctx.sampleRate + ' Hz';
       testAudioTimer = setTimeout(function () {
         if (!engineOn) {
           audio.stop();
@@ -242,7 +247,10 @@
         testAudioTimer = 0;
       }, 1900);
     }).catch(function (err) {
-      setNotice('Test audio non riuscito: ' + (err && err.message ? err.message : 'errore Web Audio.'), 'error');
+      var message = err && err.message ? err.message : 'errore Web Audio.';
+      setNotice('Test audio non riuscito: ' + message, 'error');
+      if (ui.runtimeStatus) ui.runtimeStatus.textContent = 'AUDIO ERRORE: ' + message;
+      console.error('Rev My Dishwasher TEST AUDIO:', err);
     });
   }
 
@@ -269,6 +277,7 @@
   }
 
   function tick(now) {
+    try {
     var dt = Math.min(0.08, Math.max(0.001, (now - lastFrame) / 1000));
     lastFrame = now;
     var input;
@@ -300,7 +309,13 @@
       lastParamSent = now;
     }
     updateDisplay();
-    requestAnimationFrame(tick);
+    } catch (err) {
+      console.error('Rev My Dishwasher update loop:', err);
+      setNotice('Errore aggiornamento: ' + (err && err.message ? err.message : String(err)), 'error');
+      if (ui.runtimeStatus) ui.runtimeStatus.textContent = 'APP ERRORE: ' + (err && err.message ? err.message : String(err));
+    } finally {
+      requestAnimationFrame(tick);
+    }
   }
 
   function bindSliders() {
@@ -356,6 +371,9 @@
   setManual(settings.manual);
   setUnits(settings.units);
   setNotice('Pronto. Premi Avvia motore per iniziare.');
+  window.__RMD_APP_READY = true;
+  if (window.__RMD_BOOT) window.__RMD_BOOT.ready = true;
+  if (ui.runtimeStatus) ui.runtimeStatus.textContent = 'APP: OK · ' + (window.__RMD_BOOT ? window.__RMD_BOOT.version : 'no-diagnostic') + ' · ' + cars.length + ' profili · ' + (window.EngineDSP ? 'DSP OK' : 'DSP NON TROVATO');
   requestAnimationFrame(tick);
 
   window.addEventListener('pagehide', function () {
