@@ -115,6 +115,7 @@
           <div class="privacy-note"><span class="privacy-icon">◈</span><span><b>Solo sul dispositivo</b><small>Nessun account, tracking o invio della posizione.</small></span></div>
         </div>
         <div class="notice" id="notice" role="status">Pronto. Premi Avvia motore per iniziare.</div>
+        <p id="runtimeStatus" role="status" style="margin:8px 0 0;color:#8793a3;font:11px/1.4 ui-monospace,monospace;letter-spacing:.02em;overflow-wrap:anywhere">APP: caricamento moduli…</p>
       </section>
 
       <section class="footer-panel">
@@ -126,11 +127,44 @@
     <footer class="page-footer"><span>REV MY DISHWASHER</span><span>Non coprire sirene, clacson, avvisi o altri suoni di sicurezza. Usa a volume moderato.</span></footer>
   </div>
 
-  <script src="js/engine-dsp.js"></script>
-  <script src="js/cars.js"></script>
-  <script src="js/audio.js"></script>
-  <script src="js/gps.js"></script>
-  <script src="js/vehicle.js"></script>
-  <script src="js/main.js"></script>
+  <script>
+    (function () {
+      var boot = window.__RMD_BOOT = { version: '2026.11.04.4', loaded: [], errors: [], ready: false };
+      function show(message) {
+        var box = document.getElementById('notice');
+        var status = document.getElementById('runtimeStatus');
+        if (box) { box.className = 'notice error'; box.textContent = message; }
+        if (status) status.textContent = 'APP: ERRORE · ' + message;
+      }
+      window.__RMD_SCRIPT_LOADED = function (name) {
+        boot.loaded.push(name);
+        var status = document.getElementById('runtimeStatus');
+        if (status) status.textContent = 'APP: moduli caricati ' + boot.loaded.length + '/6 · ' + boot.version;
+      };
+      window.__RMD_SCRIPT_FAILED = function (name) {
+        var message = 'Impossibile caricare ' + name + '.';
+        boot.errors.push(message); show(message);
+      };
+      window.addEventListener('error', function (event) {
+        var message = event && event.message ? event.message : 'Errore JavaScript non identificato';
+        if (event && event.filename) message += ' (' + event.filename.split('/').pop() + ':' + (event.lineno || '?') + ')';
+        boot.errors.push(message); show('Errore JavaScript: ' + message);
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event && event.reason;
+        var message = reason && reason.message ? reason.message : String(reason || 'Promise rifiutata');
+        boot.errors.push(message); show('Errore audio/app: ' + message);
+      });
+      setTimeout(function () {
+        if (!boot.ready && !boot.errors.length) show('App non inizializzata. Moduli: ' + boot.loaded.join(', '));
+      }, 2500);
+    })();
+  </script>
+  <script src="js/engine-dsp.js?v=20261104-4" onload="__RMD_SCRIPT_LOADED('engine-dsp.js')" onerror="__RMD_SCRIPT_FAILED('engine-dsp.js')"></script>
+  <script src="js/cars.js?v=20261104-4" onload="__RMD_SCRIPT_LOADED('cars.js')" onerror="__RMD_SCRIPT_FAILED('cars.js')"></script>
+  <script src="js/audio.js?v=20261104-4" onload="__RMD_SCRIPT_LOADED('audio.js')" onerror="__RMD_SCRIPT_FAILED('audio.js')"></script>
+  <script src="js/gps.js?v=20261104-4" onload="__RMD_SCRIPT_LOADED('gps.js')" onerror="__RMD_SCRIPT_FAILED('gps.js')"></script>
+  <script src="js/vehicle.js?v=20261104-4" onload="__RMD_SCRIPT_LOADED('vehicle.js')" onerror="__RMD_SCRIPT_FAILED('vehicle.js')"></script>
+  <script src="js/main.js?v=20261104-4" onload="__RMD_SCRIPT_LOADED('main.js')" onerror="__RMD_SCRIPT_FAILED('main.js')"></script>
 </body>
 </html>
