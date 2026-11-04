@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080b10">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Rev My Dishwasher — Your dishwasher deserves a V8.">
+  <title>Rev My Dishwasher</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="Rev My Dishwasher">
+        <span class="brand-mark" aria-hidden="true"><i></i><b></b></span>
+        <span class="brand-copy"><strong>REV MY DISHWASHER</strong><small>YOUR DISHWASHER DESERVES A V8</small></span>
+      </a>
+      <div class="top-status">
+        <span class="status-chip" id="gpsStatus"><i></i><span>GPS OFF</span></span>
+        <span class="status-chip" id="audioStatus"><i></i><span>MOTORE SPENTO</span></span>
+      </div>
+    </header>
+
+    <main id="top" class="dashboard">
+      <section class="panel instrument-panel">
+        <div class="panel-head">
+          <div><p class="eyebrow">LIVE TELEMETRY</p><h1>Quadro strumenti</h1></div>
+          <span class="live-mark"><i></i> LIVE</span>
+        </div>
+
+        <div class="instrument-stage">
+          <div class="rpm-dial" id="rpmDial" style="--rpm-progress:0deg">
+            <div class="dial-inner">
+              <span class="dial-caption">VELOCITÀ</span>
+              <strong class="speed-value" id="speedValue">0</strong>
+              <span class="speed-unit" id="speedUnit">km/h</span>
+              <div class="gear-box"><small>MARCE</small><strong id="gearValue">N</strong></div>
+            </div>
+            <div class="rpm-readout"><strong id="rpmValue">0</strong><span>RPM</span></div>
+          </div>
+          <div class="dial-scale"><span>0</span><span>2</span><span>4</span><span>6</span><span>8</span><span>10</span></div>
+        </div>
+
+        <div class="telemetry-bars">
+          <div class="meter-row"><div><span>THROTTLE</span><b id="throttleText">0%</b></div><div class="meter-track"><i id="throttleMeter"></i></div></div>
+          <div class="meter-row"><div><span>ENGINE LOAD</span><b id="loadText">0%</b></div><div class="meter-track load"><i id="loadMeter"></i></div></div>
+        </div>
+        <div class="instrument-foot"><span id="driveState">IN ATTESA</span><span id="gpsAccuracy">--</span></div>
+      </section>
+
+      <section class="panel control-panel">
+        <div class="car-head">
+          <div class="car-glyph" aria-hidden="true"><svg viewBox="0 0 120 42"><path d="M7 29 12 20q3-5 12-6l19-3 12-7q4-2 9-2h18q7 0 13 6l7 7q8 2 11 8l-1 7H8z"/><path class="glass" d="m46 11 10-6q2-1 6-1h17q5 0 10 5l5 6H39z"/><circle cx="30" cy="29" r="7"/><circle cx="91" cy="29" r="7"/></svg></div>
+          <div class="car-title"><p class="eyebrow">PROFILO SONORO ATTIVO</p><h2 id="carName">Shift Maniac</h2><p id="carTagline">Flat-six scream · 9,000 rpm</p></div>
+          <span class="engine-badge" id="engineBadge">FLAT-6</span>
+        </div>
+
+        <label class="field-label" for="carSelect">SCEGLI IL MOTORE</label>
+        <select id="carSelect" class="car-select"></select>
+
+        <button class="start-button" id="startButton" type="button">
+          <span class="power-symbol">⏻</span><span id="startLabel">AVVIA MOTORE</span><i class="start-led"></i>
+        </button>
+        <p class="start-note" id="startNote">L'audio parte dopo il tocco, per i limiti del browser. Prima prova da fermo.</p>
+
+        <div class="section-block">
+          <div class="section-heading"><span>MODALITÀ DI GUIDA</span><small>SORGENTE VELOCITÀ</small></div>
+          <div class="segmented" role="group" aria-label="Modalità di guida">
+            <button type="button" data-mode="gps" aria-pressed="false"><span>◎</span> GPS DRIVE</button>
+            <button type="button" data-mode="test" class="active" aria-pressed="true"><span>⌁</span> TEST DRIVE</button>
+          </div>
+        </div>
+
+        <div class="section-block gearbox-block">
+          <div class="section-heading"><span>TRASMISSIONE</span><small>GESTIONE CAMBIO</small></div>
+          <div class="gearbox-row">
+            <div class="segmented compact" role="group" aria-label="Tipo cambio">
+              <button id="autoButton" class="active" type="button" aria-pressed="true">AUTO</button>
+              <button id="manualButton" type="button" aria-pressed="false">MANUALE</button>
+            </div>
+            <div class="manual-gears" id="manualGears" hidden>
+              <button id="downGear" type="button" aria-label="Scala marcia">−</button>
+              <strong id="manualGearLabel">1</strong>
+              <button id="upGear" type="button" aria-label="Aumenta marcia">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="pedal-block" id="testControls">
+          <div class="section-heading"><span>COMANDI TEST DRIVE</span><small>TIENI PREMUTO</small></div>
+          <div class="pedal-row">
+            <button class="pedal brake" id="brakePedal" type="button"><span class="pedal-kicker">BRAKE</span><span class="pedal-face"><i></i><i></i><i></i><i></i></span><small>FRENO</small></button>
+            <button class="pedal gas" id="gasPedal" type="button"><span class="pedal-kicker">GAS</span><span class="pedal-face"><i></i><i></i><i></i></span><small>ACCELERATORE</small></button>
+          </div>
+        </div>
+
+        <div class="rev-row">
+          <div><b>REV / BLIP</b><small>Accelerata da fermo o comando thruster</small></div>
+          <div class="rev-actions"><button class="test-audio" id="soundTestButton" type="button">TEST AUDIO</button><button class="rev-button" id="revButton" type="button"><b>REV</b><small>HOLD</small></button></div>
+        </div>
+      </section>
+
+      <section class="panel tuning-panel">
+        <div class="panel-head"><div><p class="eyebrow">SOUND DESIGN</p><h2>Regolazione audio</h2></div><span class="local-tag">SALVATAGGIO LOCALE</span></div>
+        <div class="slider-list">
+          <label class="slider-control"><span><b>Volume</b><output id="volumeValue">70%</output></span><input id="volumeSlider" type="range" min="0" max="100" value="70"></label>
+          <label class="slider-control"><span><b>Carattere</b><output id="characterValue">65%</output></span><input id="characterSlider" type="range" min="0" max="100" value="65"></label>
+          <label class="slider-control"><span><b>Scoppiettii</b><output id="crackleValue">25%</output></span><input id="crackleSlider" type="range" min="0" max="100" value="25"></label>
+          <label class="slider-control"><span><b>Reattività</b><output id="intensityValue">55%</output></span><input id="intensitySlider" type="range" min="0" max="100" value="55"></label>
+        </div>
+        <div class="bottom-controls">
+          <div><span class="field-label">UNITÀ VELOCITÀ</span><div class="segmented compact units"><button id="kmhButton" class="active" type="button">KM/H</button><button id="mphButton" type="button">MPH</button></div></div>
+          <div class="privacy-note"><span class="privacy-icon">◈</span><span><b>Solo sul dispositivo</b><small>Nessun account, tracking o invio della posizione.</small></span></div>
+        </div>
+        <div class="notice" id="notice" role="status">Pronto. Premi Avvia motore per iniziare.</div>
+      </section>
+
+      <section class="footer-panel">
+        <div><p class="eyebrow">REV MY DISHWASHER · PERSONAL BUILD</p><h2>Your dishwasher deserves a V8.</h2><p>Il suono viene generato in tempo reale nel browser. GPS, cambio e parametri audio restano sul dispositivo.</p></div>
+        <div class="footer-flags"><span><i></i> Audio locale</span><span><i></i> Nessun paywall</span><span><i></i> Accesso privato</span></div>
+      </section>
+    </main>
+
+    <footer class="page-footer"><span>REV MY DISHWASHER</span><span>Non coprire sirene, clacson, avvisi o altri suoni di sicurezza. Usa a volume moderato.</span></footer>
+  </div>
+
+  <script src="js/engine-dsp.js"></script>
+  <script src="js/cars.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/gps.js"></script>
+  <script src="js/vehicle.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
