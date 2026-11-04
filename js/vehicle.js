@@ -125,7 +125,14 @@
     this._autoShift(dt, rpm);
     if (!this.manual && this.engine.type !== 'electric') rpm = Math.max(idle, this.gearRpm(this.speed));
     if (this.engine.type === 'electric') rpm = this.speed / Math.max(0.1, v.tireCircumferenceM || 2.2) * 60 * (v.ratios && v.ratios[0] || 1) * (v.finalDrive || 1);
-    if (this.speed < 0.4 && rev > 0 && this.engine.type !== 'electric') rpm = idle + rev * Math.max(0, redline - idle) * 0.78;
+    if (this.speed < 0.4 && rev > 0 && this.engine.type !== 'electric') {
+      rpm = idle + rev * Math.max(0, redline - idle) * 0.78;
+    } else if (this.speed < 0.6 && this.throttle > 0.08 && this.engine.type !== 'electric' && this.engine.type !== 'thruster') {
+      // With the virtual clutch disengaged at standstill, gas must raise RPM
+      // even before the simulated vehicle starts rolling.
+      var freeRevLimit = e.launchRpm || (idle + (redline - idle) * 0.35);
+      rpm = Math.max(rpm, idle + (freeRevLimit - idle) * this.throttle);
+    }
     if (this.engine.type === 'thruster') rpm = idle;
     this.rpm = clamp(rpm, idle, limiter + 120);
 
