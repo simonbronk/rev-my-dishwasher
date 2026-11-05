@@ -1,0 +1,162 @@
+/* Rev My Dishwasher — Tesla landscape cockpit */
+:root{
+  color-scheme:dark;
+  --bg:#070b10;--panel:#111923;--line:rgba(151,174,198,.16);
+  --line-strong:rgba(151,174,198,.27);--muted:#8796a8;--text:#f3f6fa;
+  --amber:#ff9a43;--amber-soft:#ffc17e;--cyan:#75c8e8;--green:#72d8a0;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;min-height:100%;background:var(--bg);color:var(--text)}
+body{font-size:14px;background:radial-gradient(ellipse at 18% 0%,rgba(41,65,87,.25),transparent 37%),radial-gradient(ellipse at 85% 100%,rgba(132,70,32,.10),transparent 35%),var(--bg)}
+button,select,input{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.app-shell{width:min(1920px,100%);height:100dvh;min-height:0;margin:0 auto;padding:0 24px 14px;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.topbar{height:clamp(50px,6dvh,64px);flex:none;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding:0 2px}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;min-width:0}
+.brand-mark{position:relative;width:36px;height:36px;flex:none;border:1px solid rgba(255,161,82,.52);border-radius:11px;display:block;background:linear-gradient(145deg,#3b281c,#111923);box-shadow:0 0 24px rgba(255,150,62,.10),inset 0 1px 0 rgba(255,255,255,.08)}
+.brand-mark:before,.brand-mark:after{content:"";position:absolute;left:8px;right:8px;height:2px;background:var(--amber);border-radius:3px}
+.brand-mark:before{top:12px}.brand-mark:after{top:20px;left:12px;right:5px}
+.brand-mark i{position:absolute;width:4px;height:4px;border-radius:50%;background:#fff0d7;right:8px;top:10px}.brand-mark b{display:none}
+.brand-copy{display:flex;flex-direction:column;gap:3px;min-width:0}
+.brand-copy strong{font-size:13px;letter-spacing:.14em;font-weight:900;white-space:nowrap}
+.brand-copy small{font-size:9px;letter-spacing:.20em;color:var(--amber-soft);font-weight:750;white-space:nowrap}
+.top-status{display:flex;gap:8px;align-items:center}
+.status-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:rgba(13,20,29,.82);color:#a6b4c3;font-size:9px;font-weight:850;letter-spacing:.12em;white-space:nowrap}
+.status-chip i,.live-mark i{width:7px;height:7px;flex:none;border-radius:50%;background:#536273;box-shadow:0 0 0 3px rgba(83,98,115,.13)}
+.status-chip.ok i{background:var(--green);box-shadow:0 0 10px rgba(114,216,160,.65)}
+.status-chip.active i{background:var(--amber);box-shadow:0 0 10px rgba(255,154,67,.65)}
+.dashboard{flex:1;min-height:0;height:calc(100dvh - clamp(50px,6dvh,64px) - 26px);display:grid;grid-template-columns:minmax(330px,.88fr) minmax(560px,1.22fr);grid-template-rows:minmax(0,1.2fr) minmax(0,.8fr);gap:12px;overflow:hidden}
+.panel{position:relative;min-width:0;min-height:0;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,rgba(23,34,47,.97),rgba(12,19,28,.98) 72%);box-shadow:0 16px 42px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.035);overflow:hidden}
+.instrument-panel{grid-column:1;grid-row:1 / span 2;padding:clamp(14px,1.4vw,23px);display:flex;flex-direction:column}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.eyebrow{margin:0 0 4px;color:var(--amber);font-size:9px;font-weight:900;letter-spacing:.20em;text-transform:uppercase}
+.panel h1,.panel h2{margin:0;font-size:clamp(16px,1.25vw,21px);letter-spacing:-.035em;font-weight:760}
+.live-mark{display:flex;align-items:center;gap:8px;color:#a6b6c7;font-size:9px;font-weight:900;letter-spacing:.16em;white-space:nowrap}
+.live-mark i{background:var(--green);box-shadow:0 0 10px rgba(114,216,160,.6)}
+.instrument-stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 0}
+.rpm-dial{--rpm-progress:0deg;position:relative;width:min(100%,430px,47dvh);aspect-ratio:1;flex:none;border-radius:50%;display:grid;place-items:center;background:conic-gradient(from 225deg,transparent 0deg,transparent 2deg,var(--amber) 3deg,var(--amber) var(--rpm-progress),#35475a var(--rpm-progress),#35475a 270deg,transparent 271deg,transparent 360deg);filter:drop-shadow(0 14px 26px rgba(0,0,0,.44))}
+.rpm-dial:before{content:"";position:absolute;inset:10px;border-radius:50%;background:conic-gradient(from 225deg,#29394a 0deg,#42566d 270deg,transparent 271deg);opacity:.8}
+.rpm-dial:after{content:"";position:absolute;inset:18px;border:1px solid rgba(155,183,209,.13);border-radius:50%;background:radial-gradient(circle at 48% 35%,#233244 0,#111b27 66%,#0a111a 100%);box-shadow:inset 0 6px 36px rgba(0,0,0,.55),inset 0 0 0 8px rgba(255,255,255,.012)}
+.dial-inner{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-top:-8px}
+.dial-caption{font-size:9px;font-weight:900;letter-spacing:.22em;color:#91a4b8}
+.speed-value{font-size:clamp(72px,6.6vw,112px);font-weight:780;line-height:.96;letter-spacing:-.08em;font-variant-numeric:tabular-nums;margin:9px 0 0;text-shadow:0 5px 26px rgba(0,0,0,.3)}
+.speed-unit{font-size:10px;letter-spacing:.20em;text-transform:uppercase;color:#9aaabd;margin-top:7px;font-weight:750}
+.gear-box{display:flex;align-items:center;gap:12px;margin-top:clamp(10px,1.5vh,18px);padding:6px 15px;border:1px solid rgba(137,164,191,.24);background:rgba(7,13,20,.72);border-radius:9px;box-shadow:0 6px 22px rgba(0,0,0,.16)}
+.gear-box small{font-size:8px;color:#8798aa;letter-spacing:.16em;font-weight:800}
+.gear-box strong{font-size:21px;color:var(--amber-soft);min-width:22px;text-align:center;font-variant-numeric:tabular-nums}
+.rpm-readout{position:absolute;z-index:2;bottom:19%;display:flex;align-items:baseline;gap:6px}
+.rpm-readout strong{font-size:15px;font-variant-numeric:tabular-nums;color:#d5e0eb;letter-spacing:.02em}
+.rpm-readout span{font-size:8px;letter-spacing:.17em;color:#8192a5;font-weight:800}
+.dial-scale{width:min(100%,430px);display:flex;justify-content:space-between;padding:0 8px;color:#73869a;font-size:9px;letter-spacing:.08em;margin-top:9px}
+.telemetry-bars{display:grid;gap:11px;padding:7px 3px 14px}
+.meter-row>div:first-child{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.meter-row span{font-size:9px;color:#9eafc0;font-weight:850;letter-spacing:.12em}
+.meter-row b{font-size:11px;font-variant-numeric:tabular-nums;color:#ecf2f8}
+.meter-track{height:6px;border-radius:20px;background:#273647;overflow:hidden;box-shadow:inset 0 1px 2px rgba(0,0,0,.45)}
+.meter-track i{display:block;width:0;height:100%;border-radius:20px;background:linear-gradient(90deg,#d87930,#ffba70);transition:width .12s linear;box-shadow:0 0 12px rgba(255,154,67,.3)}
+.meter-track.load i{background:linear-gradient(90deg,#427f9f,#80d2ec);box-shadow:0 0 12px rgba(117,200,232,.25)}
+.instrument-foot{display:flex;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid var(--line);color:#91a2b4;font-size:9px;font-weight:850;letter-spacing:.14em}
+
+/* Control panel: controls are laid out as two compact rows, not a long column. */
+.control-panel{grid-column:2;grid-row:1;padding:clamp(12px,1.15vw,18px);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:auto auto auto auto auto minmax(68px,1fr);gap:7px 12px;align-content:stretch}
+.car-head{grid-area:1/1/2/5;display:flex;align-items:center;gap:12px;min-height:40px;margin:0}
+.car-glyph{width:56px;height:40px;display:grid;place-items:center;border:1px solid var(--line-strong);border-radius:10px;background:linear-gradient(145deg,#101a25,#091019);flex:none}
+.car-glyph svg{width:52px;fill:#b0bfce}.car-glyph .glass{fill:#3c5369}.car-glyph circle{fill:#0a111a;stroke:#92a7bc;stroke-width:3}
+.car-title{min-width:0;flex:1}.car-title h2{font-size:clamp(16px,1.15vw,20px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.car-title>p:last-child{margin:3px 0 0;color:#8a9caf;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.engine-badge{padding:6px 9px;border:1px solid rgba(255,170,103,.32);border-radius:7px;color:var(--amber-soft);background:rgba(255,154,67,.06);font-size:9px;font-weight:950;letter-spacing:.1em;white-space:nowrap}
+.control-panel>.field-label{grid-area:2/1/3/3;align-self:end;margin:0;color:#93a6b9;font-size:9px;font-weight:900;letter-spacing:.15em}
+.car-select{grid-area:3/1/4/3;appearance:none;width:100%;height:44px;min-width:0;padding:0 38px 0 12px;border:1px solid var(--line-strong);border-radius:9px;color:#edf3f8;background:#0b141e url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2 4 4 4 4-4' fill='none' stroke='%23aab6c5' stroke-width='1.4'/%3E%3C/svg%3E") no-repeat right 14px center;font-size:13px}
+.start-button{grid-area:2/3/4/5;width:100%;height:100%;min-height:0;margin:0;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid #a95f2d;border-radius:9px;color:#211409;background:linear-gradient(105deg,#ff963c,#ffc17e);font-size:11px;font-weight:950;letter-spacing:.13em;box-shadow:0 5px 18px rgba(246,143,59,.15),inset 0 1px 0 rgba(255,255,255,.25);transition:filter .15s,transform .15s}
+.start-button:hover{filter:brightness(1.06)}.start-button:active{transform:translateY(1px)}.start-button.running{border-color:#438a66;background:linear-gradient(105deg,#55b982,#a1e4b9);color:#071b10}
+.power-symbol{font-size:22px;line-height:1;font-weight:400}.start-led{width:7px;height:7px;background:#7e401c;border-radius:50%;margin-left:auto;margin-right:10px}.start-button.running .start-led{background:#0b4b29;box-shadow:0 0 8px #135d32}
+.start-note{grid-area:4/1/5/5;align-self:center;margin:0;min-height:0;color:#8293a6;font-size:9px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.control-panel>.section-block:not(.gearbox-block){grid-area:5/1/6/3;padding:0;border:0;min-width:0}
+.control-panel>.gearbox-block{grid-area:5/3/6/5;padding:0;border:0;min-width:0}
+.section-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:7px}
+.section-heading span{font-size:9px;font-weight:900;letter-spacing:.14em;color:#aebdca;white-space:nowrap}
+.section-heading small{font-size:8px;letter-spacing:.1em;color:#75889c;white-space:nowrap}
+.segmented{display:flex;gap:4px;padding:3px;background:#09111a;border:1px solid rgba(143,169,195,.17);border-radius:9px;min-width:0}
+.segmented button{flex:1;min-width:0;min-height:37px;padding:0 8px;border:1px solid transparent;border-radius:7px;background:transparent;color:#94a5b7;font-size:10px;font-weight:900;letter-spacing:.075em;white-space:nowrap}
+.segmented button span{font-size:15px;margin-right:4px;color:var(--amber-soft)}
+.segmented button.active{border-color:rgba(255,161,82,.3);background:linear-gradient(135deg,rgba(255,154,67,.17),rgba(255,154,67,.06));color:#ffd09f;box-shadow:inset 0 0 14px rgba(255,154,67,.06)}
+.gearbox-row{display:flex;align-items:center;gap:9px}.compact{max-width:230px;flex:1}.compact button{min-height:31px;font-size:9px}
+.manual-gears{display:flex;align-items:center;gap:7px}.manual-gears button{width:34px;height:34px;border-radius:7px;border:1px solid var(--line-strong);background:#142233;color:var(--amber-soft);font-size:18px}.manual-gears strong{min-width:16px;text-align:center;color:#edf2f8}
+.control-panel>.pedal-block{grid-area:6/1/7/3;align-self:end;min-width:0;border:0;padding:0}
+.pedal-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.pedal{height:clamp(65px,8.6vh,82px);display:grid;grid-template-columns:1fr auto;grid-template-rows:auto 1fr auto;align-items:center;padding:8px 11px;border:1px solid rgba(143,169,195,.23);border-radius:10px;background:linear-gradient(145deg,#172433,#0a121c);color:#bac7d4;touch-action:none;user-select:none;-webkit-user-select:none}
+.pedal-kicker{font-size:9px;letter-spacing:.16em;font-weight:950}.pedal-face{grid-column:2;grid-row:1 / span 2;width:15px;height:39px;display:flex;justify-content:space-evenly;align-items:center;flex-direction:column;border-radius:5px;background:#080e15;border:1px solid #3b4d60;padding:3px}
+.pedal-face i{width:7px;height:2px;border-radius:3px;background:#7e91a6}.pedal small{grid-row:3;font-size:8px;color:#8295a8;letter-spacing:.13em}
+.pedal.gas .pedal-kicker{color:var(--amber-soft)}.pedal.gas.active{border-color:#d17c3b;box-shadow:inset 0 0 18px rgba(255,154,67,.12)}.pedal.brake .pedal-kicker{color:#f09494}.pedal.brake.active{border-color:#b85c5c;box-shadow:inset 0 0 18px rgba(255,98,98,.12)}
+.control-panel>.rev-row{grid-area:6/3/7/5;align-self:end;min-width:0;display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:0;margin:0;border:0}
+.rev-row>div:first-child{display:flex;flex-direction:column;gap:4px;min-width:0}.rev-row b{font-size:10px;letter-spacing:.13em;color:#e4ebf2}.rev-row small{font-size:8px;color:#8698ab;white-space:nowrap}
+.rev-actions{display:flex;align-items:center;gap:7px;flex:none}
+.test-audio{height:50px;min-width:86px;padding:0 10px;border:1px solid var(--line-strong);border-radius:9px;background:#132131;color:#c4d3e1;font-size:9px;font-weight:950;letter-spacing:.08em}
+.rev-button{width:64px;height:58px;flex:none;border:1px solid rgba(255,154,67,.48);border-radius:10px;background:linear-gradient(145deg,#482b19,#21170f);color:#ffbd7b;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;touch-action:none}
+.rev-button b{font-size:14px;letter-spacing:.13em;color:inherit}.rev-button small{font-size:7px;letter-spacing:.15em;color:#d5a276}.rev-button.active{background:linear-gradient(145deg,#ff9b3d,#d16c27);color:#1d1209;box-shadow:0 0 18px rgba(255,155,61,.24)}
+.tuning-panel{grid-column:2;grid-row:2;padding:clamp(11px,1vw,16px) clamp(14px,1.3vw,20px);display:flex;flex-direction:column;gap:clamp(6px,.8vh,10px)}
+.tuning-head{flex:none}.local-tag{font-size:8px;font-weight:850;letter-spacing:.11em;color:#91a3b6;border:1px solid var(--line);border-radius:6px;padding:5px 8px;white-space:nowrap}
+.slider-list{flex:1;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:center;gap:clamp(10px,1.2vw,18px);margin:0}
+.slider-control{display:block;min-width:0}.slider-control>span{display:flex;align-items:center;justify-content:space-between;gap:7px;margin-bottom:6px}
+.slider-control b{font-size:11px;color:#d2dce6;white-space:nowrap}.slider-control output{font-size:10px;color:var(--amber-soft);font-variant-numeric:tabular-nums}
+.slider-control input{display:block;width:100%;margin:0;accent-color:var(--amber);height:20px;cursor:pointer;touch-action:pan-y}
+.bottom-controls{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0;padding-top:7px;border-top:1px solid var(--line)}
+.unit-control{display:flex;align-items:center;gap:9px}.unit-control .field-label{margin:0}.units{width:118px}.units button{min-height:27px;padding:0 6px}
+.privacy-note{display:flex;align-items:center;gap:8px;min-width:0}.privacy-icon{color:var(--green);font-size:17px}.privacy-note>span:last-child{display:flex;flex-direction:column;gap:2px}
+.privacy-note b{font-size:10px;color:#c6d2de}.privacy-note small{font-size:8px;color:#8294a7;white-space:nowrap}
+.notice{flex:1;min-width:0;margin:0!important;padding:6px 9px;background:rgba(7,14,22,.72);border:1px solid var(--line);border-radius:7px;color:#9aabba;font-size:9px!important;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.notice.warn{border-color:rgba(255,189,113,.35);color:#ffbd71}.notice.error{border-color:rgba(255,98,98,.4);color:#ff9797}
+#runtimeStatus{flex:none;max-width:47%;margin:0!important;color:#8293a6!important;font:9px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace!important;letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tuning-panel #runtimeStatus{align-self:center}
+.tuning-panel{position:relative}.tuning-panel .notice{display:inline-block}
+.tuning-panel .notice + #runtimeStatus{display:block}
+.footer-panel,.page-footer{display:none!important}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--amber-soft);outline-offset:3px}
+[hidden]{display:none!important}
+
+/* Compact sizing for shorter landscape windows while preserving tap targets. */
+@media (min-width:900px) and (orientation:landscape) and (max-height:760px){
+  .app-shell{padding:0 15px 12px;gap:8px}
+  .topbar{height:46px}
+  .dashboard{height:calc(100dvh - 66px);grid-template-rows:minmax(0,1.12fr) minmax(0,.88fr);gap:9px}
+  .instrument-panel{padding:11px}.rpm-dial{width:min(100%,360px,42dvh)}.instrument-stage{padding:3px 0}.telemetry-bars{gap:8px;padding:5px 2px 9px}
+  .control-panel{padding:10px;gap:5px;grid-template-rows:36px 9px 38px 10px 49px minmax(58px,1fr)}
+  .car-head{min-height:36px}.car-glyph{width:49px;height:35px}.car-glyph svg{width:45px}.car-title h2{font-size:15px}
+  .car-select{height:38px}.start-note{font-size:8px}.section-heading{margin-bottom:4px}.section-heading span{font-size:8px}.section-heading small{font-size:7px}
+  .segmented button{min-height:32px;font-size:8px;padding:0 4px}.compact button{min-height:28px}.pedal{height:58px}.control-panel>.rev-row{gap:5px}
+  .rev-row>div:first-child{gap:2px}.rev-row b{font-size:9px}.rev-row small{font-size:7px}.rev-actions{gap:5px}
+  .test-audio{min-width:76px;height:44px;font-size:8px;padding:0 6px}.rev-button{width:54px;height:48px}
+  .tuning-panel{padding:8px 11px;gap:4px}.panel h2{font-size:15px}.slider-list{gap:8px}.slider-control>span{margin-bottom:2px}.slider-control b{font-size:9px}.slider-control input{height:16px}
+  .bottom-controls{padding-top:4px}.feedback-row{min-height:17px!important}.notice{padding:4px 7px;font-size:8px!important}#runtimeStatus{font-size:8px!important}
+}
+@media (min-width:900px) and (orientation:landscape) and (max-width:1180px){
+  .app-shell{padding-left:12px;padding-right:12px}
+  .dashboard{grid-template-columns:minmax(280px,.78fr) minmax(500px,1.22fr)}
+  .rpm-dial{width:min(100%,390px,45dvh)}.control-panel{padding:11px;gap:6px}
+  .car-glyph{display:none}.profile-row{grid-template-columns:1fr}
+  .test-audio{min-width:72px}.rev-row>div:first-child{display:none}
+  .slider-control b{font-size:10px}.privacy-note small{font-size:7px}
+}
+/* Portrait and narrow layouts remain scrollable instead of cutting off controls. */
+@media (max-width:899px),(orientation:portrait){
+  html,body{height:auto;overflow:auto}.app-shell{height:auto;min-height:100dvh;padding:0 14px 18px;gap:10px;overflow:visible}
+  .topbar{height:62px}.dashboard{height:auto;max-height:none;flex:none;display:grid;grid-template-columns:1fr;grid-template-rows:auto;gap:12px;overflow:visible}
+  .instrument-panel,.control-panel,.tuning-panel{grid-column:1;grid-row:auto;overflow:visible}
+  .instrument-panel{min-height:450px;padding:16px}.rpm-dial{width:min(80vw,340px)}.instrument-stage{min-height:310px}
+  .control-panel{display:flex;flex-direction:column;gap:11px;padding:16px}
+  .control-panel>.field-label,.car-select,.start-button,.start-note,.control-panel>.section-block:not(.gearbox-block),.control-panel>.gearbox-block,.control-panel>.pedal-block,.control-panel>.rev-row{grid-area:auto}
+  .control-panel>.field-label{margin-bottom:-7px}.car-select{height:44px}.start-button{height:48px;margin-top:-5px}.start-note{white-space:normal}
+  .drive-settings{display:grid;grid-template-columns:1.08fr .92fr;gap:12px}
+  .control-panel>.rev-row{display:flex;flex-direction:row;justify-content:space-between}
+  .tuning-panel{padding:16px;gap:12px}.slider-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:15px}
+  .feedback-row{display:flex;align-items:center;gap:10px}.footer-panel,.page-footer{display:none!important}
+}
+@media (max-width:560px){
+  .app-shell{padding:0 10px 14px}.brand-mark{width:31px;height:31px}.brand-copy strong{font-size:10px}.brand-copy small{font-size:7px;letter-spacing:.12em}
+  .top-status{gap:4px}.status-chip{padding:6px 7px;font-size:7px;gap:5px}
+  .panel h1,.panel h2{font-size:17px}.instrument-panel{min-height:405px}.instrument-stage{min-height:275px}.rpm-dial{width:min(76vw,285px)}.speed-value{font-size:74px}
+  .drive-settings{grid-template-columns:1fr;gap:10px}.pedal{height:74px}.control-panel>.rev-row{display:grid;grid-template-columns:1fr auto;align-items:center}
+  .rev-actions{gap:6px}.rev-button{height:53px;width:62px}.test-audio{height:48px}
+  .slider-list{gap:13px 11px}.bottom-controls{align-items:flex-start;flex-direction:column}.privacy-note small{white-space:normal}
+  #runtimeStatus{display:none}.feedback-row{display:block}.notice{white-space:normal}.local-tag{font-size:7px;padding:4px 6px}
+}
