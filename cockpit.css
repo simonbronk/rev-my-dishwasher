@@ -210,3 +210,28 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
   .rev-row>div:first-child{display:none}.test-audio{min-width:68px;padding:0 5px}.rev-button{width:50px}
   .slider-control b{font-size:10px}.privacy-note small{font-size:7px}
 }
+
+
+/* Dedicated accelerator intensity control, placed next to the virtual pedals. */
+.accelerator-intensity{
+  flex:none;width:100%;padding:9px 11px;border:1px solid rgba(255,154,67,.30);
+  border-radius:10px;background:linear-gradient(135deg,rgba(255,154,67,.085),rgba(10,17,26,.72));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025)
+}
+.intensity-control{display:block;width:100%;min-width:0}
+.intensity-control>span{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+.intensity-control b{font-size:10px;color:#ffd09f;font-weight:950;letter-spacing:.105em}
+.intensity-control output{font-size:11px;color:var(--amber-soft);font-weight:850;font-variant-numeric:tabular-nums}
+.intensity-control input{display:block;width:100%;height:22px;margin:0;accent-color:var(--amber);cursor:pointer;touch-action:pan-y}
+.intensity-control small{display:block;margin-top:2px;color:#91a1b2;font-size:8px;line-height:1.25;letter-spacing:.015em}
+@media (min-width:900px) and (orientation:landscape) and (max-height:760px){
+  .accelerator-intensity{padding:6px 9px}
+  .intensity-control>span{margin-bottom:1px}
+  .intensity-control b{font-size:8px}
+  .intensity-control input{height:18px}
+  .intensity-control small{font-size:7px}
+}
+@media (max-width:560px){
+  .accelerator-intensity{padding:9px 10px}
+  .intensity-control b{font-size:9px}
+}
