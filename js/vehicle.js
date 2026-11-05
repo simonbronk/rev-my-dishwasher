@@ -26,6 +26,8 @@
     this.clutch = 0;
     this.clutchUntil = 0;
     this.shiftLock = 0;
+    this.pendingShift = null;
+    this.shiftCutTimer = 0;
     this.clicks = [];
     this.neutral = false;
     this.maxSpeed = (this.cfg.maxSpeedKmh || 280) / 3.6;
@@ -44,14 +46,55 @@
   };
 
   Vehicle.prototype.shift = function (delta) {
-    if (!this.manual || this.ratios.length < 2) return;
+    if (!this.manual || this.ratios.length < 2 || this.pendingShift) return;
     var next = clamp(this.gear + delta, 1, this.ratios.length);
     if (next === this.gear) return;
-    this.gear = next;
-    this.shiftLock = 0.32;
-    this.clutch = 1;
-    this.clutchUntil = performance.now() + 180;
-    this.clicks.push(delta > 0 ? 1 : 0.85);
+    this._beginShift(next, true);
+  };
+
+  // A downshift is prepared at the engine speed dictated by the lower ratio.
+  // The DSP receives the same rpm/load/clutch/cut signals as TeslaSound.
+  Vehicle.prototype._beginShift = function (nextGear, manual) {
+    var fromGear = this.gear;
+    if (nextGear === fromGear || nextGear < 1 || nextGear > this.ratios.length) return false;
+
+    var downshift = nextGear < fromGear;
+    var idle = this.engine.idleRpm || 700;
+    var redline = this.engine.redlineRpm || 7000;
+    var limiter = this.engine.limiterRpm || redline;
+    var currentRpm = Math.max(idle, this.rpm || this.gearRpm(this.speed, fromGear));
+    var targetRpm = this.gearRpm(this.speed, nextGear);
+    var combustion = this.engine.type !== 'electric' && this.engine.type !== 'thruster';
+
+    // Do not select a lower ratio that would put the engine beyond its limiter.
+    if (downshift && combustion && targetRpm > limiter + 35) return false;
+
+    if (downshift && combustion && this.speed > 0.8 && targetRpm > currentRpm + 80) {
+      // Briefly bring the engine to the lower gear's wheel-synchronous rpm
+      // before engaging it: this is the rev-match used for downshifts.
+      this.pendingShift = {
+        fromGear: fromGear,
+        toGear: nextGear,
+        startRpm: currentRpm,
+        elapsed: 0,
+        duration: 0.18,
+        manual: !!manual
+      };
+      this.shiftLock = 0.42;
+    } else {
+      this.gear = nextGear;
+      this.shiftLock = downshift ? 0.22 : 0.18;
+      if (manual) this.clicks.push(downshift ? 0.85 : 1);
+    }
+
+    if (manual) {
+      this.clutch = 1;
+      this.clutchUntil = performance.now() + 180;
+    } else if (!downshift && combustion && this.throttle >= 0.8) {
+      // The original DSP's cut input is also used for a full-throttle upshift.
+      this.shiftCutTimer = Math.max(this.shiftCutTimer, 0.08);
+    }
+    return true;
   };
 
   Vehicle.prototype.setManual = function (enabled) {
@@ -60,7 +103,7 @@
 
   Vehicle.prototype._autoShift = function (dt, rpm, intensity) {
     this.shiftLock = Math.max(0, this.shiftLock - dt);
-    if (this.manual || this.ratios.length < 2 || this.shiftLock > 0) return;
+    if (this.manual || this.pendingShift || this.ratios.length < 2 || this.shiftLock > 0) return;
 
     var e = this.engine;
     var idle = e.idleRpm || 700;
@@ -91,11 +134,9 @@
     var down = e.downshiftRpm || Math.max(idle * 1.35, Math.min(cruiseUp * 0.2, 1900));
 
     if (rpm >= up && this.gear < this.ratios.length) {
-      this.gear++;
-      this.shiftLock = 0.32;
+      this._beginShift(this.gear + 1, false);
     } else if (rpm < down && this.gear > 1) {
-      this.gear--;
-      this.shiftLock = 0.24;
+      this._beginShift(this.gear - 1, false);
     }
   };
 
@@ -135,6 +176,8 @@
       this.throttle = gas;
     }
 
+    this.shiftCutTimer = Math.max(0, this.shiftCutTimer - dt);
+
     var rpm = this.gearRpm(this.speed);
     if (this.engine.type === 'electric') {
       this.gear = 1;
@@ -148,8 +191,40 @@
       rpm = Math.max(idle, rpm);
     }
 
+    var gearBeforeAutoShift = this.gear;
     this._autoShift(dt, rpm, intensity);
-    if (!this.manual && this.engine.type !== 'electric') rpm = Math.max(idle, this.gearRpm(this.speed));
+
+    // A downshift uses a short rev-match ramp before the lower ratio engages.
+    // Its target is recalculated from current road speed on every frame.
+    var shiftBlipLoad = 0;
+    if (this.pendingShift) {
+      var shifting = this.pendingShift;
+      shifting.elapsed = Math.min(shifting.duration, shifting.elapsed + dt);
+      var progress = clamp(shifting.elapsed / shifting.duration, 0, 1);
+      var eased = progress * progress * (3 - 2 * progress);
+      var matchedRpm = this.gearRpm(this.speed, shifting.toGear);
+      var rpmRise = Math.max(0, matchedRpm - shifting.startRpm);
+      rpm = shifting.startRpm + (matchedRpm - shifting.startRpm) * eased;
+
+      // The throttle blip is proportional to the rpm correction, not a
+      // separate sound effect. It briefly opens the original engine model.
+      var correction = clamp(rpmRise / Math.max(1, redline - idle), 0, 1);
+      shiftBlipLoad = Math.sin(Math.PI * progress) * clamp(0.18 + correction * 1.15, 0, 0.85);
+
+      if (progress >= 1) {
+        this.gear = shifting.toGear;
+        this.pendingShift = null;
+        rpm = this.gearRpm(this.speed);
+        this.shiftLock = Math.max(this.shiftLock, 0.14);
+        if (shifting.manual) this.clicks.push(0.85);
+      }
+    } else {
+      // An upshift engages the next ratio promptly, so the normal wheel-speed
+      // calculation immediately produces the correct rpm drop.
+      if (this.gear !== gearBeforeAutoShift) rpm = this.gearRpm(this.speed);
+      else if (!this.manual && this.engine.type !== 'electric') rpm = Math.max(idle, this.gearRpm(this.speed));
+    }
+
     if (this.engine.type === 'electric') rpm = this.speed / Math.max(0.1, v.tireCircumferenceM || 2.2) * 60 * (v.ratios && v.ratios[0] || 1) * (v.finalDrive || 1);
     if (this.speed < 0.4 && rev > 0 && this.engine.type !== 'electric') {
       rpm = idle + rev * Math.max(0, redline - idle) * 0.78;
@@ -165,10 +240,10 @@
     var pedalLoad = this.throttle;
     if (this.speed < 0.5 && rev > 0 && this.engine.type !== 'thruster') pedalLoad = Math.max(pedalLoad, 0.12 + rev * 0.88);
     if (this.engine.type === 'thruster') pedalLoad = this.throttle;
-    this.load = clamp(Math.pow(pedalLoad, 0.82), 0, 1);
+    this.load = clamp(Math.max(Math.pow(pedalLoad, 0.82), shiftBlipLoad), 0, 1);
     var lifting = this.throttle < 0.07;
-    this.overrun = lifting && (this.rpm > idle + 350 || this.speed > 1) ? clamp(0.28 + Math.max(0, -this.accel) * 0.18 + (brake * 0.35), 0, 1) : 0;
-    this.cut = this.rpm >= limiter - 35 ? 1 : 0;
+    this.overrun = !shiftBlipLoad && lifting && (this.rpm > idle + 350 || this.speed > 1) ? clamp(0.28 + Math.max(0, -this.accel) * 0.18 + (brake * 0.35), 0, 1) : 0;
+    this.cut = this.rpm >= limiter - 35 || this.shiftCutTimer > 0 ? 1 : 0;
     this.revPedal = rev;
     this.neutral = this.speed < 0.5;
     if (this.clutch && performance.now() > this.clutchUntil) this.clutch = 0;
