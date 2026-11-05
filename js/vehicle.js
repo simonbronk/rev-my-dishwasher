@@ -76,6 +76,7 @@
         fromGear: fromGear,
         toGear: nextGear,
         startRpm: currentRpm,
+        targetRpm: targetRpm,
         elapsed: 0,
         duration: 0.18,
         manual: !!manual
@@ -202,7 +203,7 @@
       shifting.elapsed = Math.min(shifting.duration, shifting.elapsed + dt);
       var progress = clamp(shifting.elapsed / shifting.duration, 0, 1);
       var eased = progress * progress * (3 - 2 * progress);
-      var matchedRpm = this.gearRpm(this.speed, shifting.toGear);
+      var matchedRpm = shifting.targetRpm;
       var rpmRise = Math.max(0, matchedRpm - shifting.startRpm);
       rpm = shifting.startRpm + (matchedRpm - shifting.startRpm) * eased;
 
