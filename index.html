@@ -9,7 +9,7 @@
   <title>Rev My Dishwasher</title>
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <link rel="stylesheet" href="cockpit.css?v=20261105-visual-1">
+  <link rel="stylesheet" href="cockpit.css?v=20261105-visual-2">
 </head>
 <body>
   <div class="app-shell">
@@ -97,6 +97,14 @@
           </div>
         </div>
 
+        <div class="accelerator-intensity">
+          <label class="intensity-control">
+            <span><b>INTENSITÀ ACCELERATORE</b><output id="intensityValue">55%</output></span>
+            <input id="intensitySlider" type="range" min="0" max="100" value="55">
+            <small>Risposta del gas e soglia dei cambi automatici</small>
+          </label>
+        </div>
+
         <div class="rev-row">
           <div><b>REV / BLIP</b><small>Accelerata da fermo o comando thruster</small></div>
           <div class="rev-actions"><button class="test-audio" id="soundTestButton" type="button">TEST AUDIO</button><button class="rev-button" id="revButton" type="button"><b>REV</b><small>HOLD</small></button></div>
@@ -109,7 +117,6 @@
           <label class="slider-control"><span><b>Volume</b><output id="volumeValue">70%</output></span><input id="volumeSlider" type="range" min="0" max="100" value="70"></label>
           <label class="slider-control"><span><b>Carattere</b><output id="characterValue">65%</output></span><input id="characterSlider" type="range" min="0" max="100" value="65"></label>
           <label class="slider-control"><span><b>Scoppiettii</b><output id="crackleValue">25%</output></span><input id="crackleSlider" type="range" min="0" max="100" value="25"></label>
-          <label class="slider-control"><span><b>Reattività</b><output id="intensityValue">55%</output></span><input id="intensitySlider" type="range" min="0" max="100" value="55"></label>
         </div>
         <div class="bottom-controls">
           <div><span class="field-label">UNITÀ VELOCITÀ</span><div class="segmented compact units"><button id="kmhButton" class="active" type="button">KM/H</button><button id="mphButton" type="button">MPH</button></div></div>
