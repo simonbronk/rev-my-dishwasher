@@ -58,15 +58,41 @@
     this.manual = !!enabled && this.ratios.length > 1;
   };
 
-  Vehicle.prototype._autoShift = function (dt, rpm) {
+  Vehicle.prototype._autoShift = function (dt, rpm, intensity) {
     this.shiftLock = Math.max(0, this.shiftLock - dt);
     if (this.manual || this.ratios.length < 2 || this.shiftLock > 0) return;
-    var redline = this.engine.redlineRpm || 7000;
-    var up = this.engine.upshiftRpm || this.engine.cruiseUpshiftRpm || redline * 0.88;
-    var down = Math.max((this.engine.idleRpm || 700) * 1.8, redline * 0.36);
+
+    var e = this.engine;
+    var idle = e.idleRpm || 700;
+    var redline = e.redlineRpm || 7000;
+    var limiter = e.limiterRpm || redline;
+
+    // TeslaSound uses two shift points: a low-load / relaxed point and a
+    // high-load / full-throttle point. Some profiles provide their own values
+    // (e.g. Shift Maniac: 6300 -> 8000 rpm; F1 Slipstream: 7000 -> 11600 rpm).
+    // For the other automatic profiles, use a conventional ~2500 rpm cruise
+    // shift and keep the full-load shift close to the limiter.
+    var cruiseUp = e.cruiseUpshiftRpm || Math.max(2500, idle * 2);
+    var fullUp = e.upshiftRpm || (e.hardCap ? limiter - 500 : Math.min(redline - 200, limiter - 250));
+    cruiseUp = clamp(cruiseUp, idle + 250, limiter - 100);
+    fullUp = clamp(Math.max(cruiseUp, fullUp), cruiseUp, limiter - 50);
+
+    // More pedal means a later shift. Intensity raises or lowers how much
+    // throttle demand is translated into a late-shift request. Squaring the
+    // demand keeps light pedal inputs close to the cruise point, while a
+    // hard press moves the shift point progressively towards fullUp.
+    var intensityValue = clamp(intensity == null ? 0.55 : intensity, 0, 1);
+    var shiftDemand = clamp(this.throttle * (0.55 + intensityValue * 0.9), 0, 1);
+    var shiftBlend = shiftDemand * shiftDemand;
+    var up = cruiseUp + (fullUp - cruiseUp) * shiftBlend;
+
+    // Downshift at low engine speed, with hysteresis: do not undo an upshift
+    // merely because the next ratio caused a normal drop in rpm.
+    var down = e.downshiftRpm || Math.max(idle * 1.35, Math.min(cruiseUp * 0.2, 1900));
+
     if (rpm >= up && this.gear < this.ratios.length) {
       this.gear++;
-      this.shiftLock = 0.28;
+      this.shiftLock = 0.32;
     } else if (rpm < down && this.gear > 1) {
       this.gear--;
       this.shiftLock = 0.24;
@@ -122,7 +148,7 @@
       rpm = Math.max(idle, rpm);
     }
 
-    this._autoShift(dt, rpm);
+    this._autoShift(dt, rpm, intensity);
     if (!this.manual && this.engine.type !== 'electric') rpm = Math.max(idle, this.gearRpm(this.speed));
     if (this.engine.type === 'electric') rpm = this.speed / Math.max(0.1, v.tireCircumferenceM || 2.2) * 60 * (v.ratios && v.ratios[0] || 1) * (v.finalDrive || 1);
     if (this.speed < 0.4 && rev > 0 && this.engine.type !== 'electric') {
