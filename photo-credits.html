@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080b10">
+<title>Crediti fotografie — Rev My Dishwasher</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080b10;color:#edf3f8}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -20%,#1e2a39,transparent 55%),#080b10}
+main{width:min(1100px,100% - 32px);margin:0 auto;padding:32px 0 54px}
+a{color:#ffc184;text-decoration:none}a:hover{text-decoration:underline}
+.back{display:inline-flex;align-items:center;gap:8px;color:#aebdcb;font-size:12px;font-weight:800;letter-spacing:.08em}
+h1{margin:28px 0 8px;font-size:clamp(26px,4vw,42px);letter-spacing:-.04em}
+.lead{max-width:720px;color:#94a5b6;font-size:14px;line-height:1.65}
+.note{margin:22px 0;padding:14px 16px;border:1px solid #334252;border-radius:10px;background:#111b27;color:#b5c3d0;font-size:12px;line-height:1.55}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;margin-top:24px}
+article{padding:14px 15px;border:1px solid #263646;border-radius:10px;background:linear-gradient(145deg,#151f2b,#0d141d)}
+h2{margin:0 0 8px;font-size:14px}
+p{margin:5px 0;color:#9aabba;font-size:12px;line-height:1.5}
+.source{display:flex;flex-wrap:wrap;gap:12px;margin-top:11px;font-size:11px;font-weight:800}
+.license{color:#e8c49e}
+footer{margin-top:36px;padding-top:16px;border-top:1px solid #263646;color:#718296;font-size:11px}
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="./">← TORNA AL CRUSCOTTO</a>
+<h1>Crediti fotografie</h1>
+<p class="lead">Le immagini delle schede auto provengono da Wikimedia Commons. Sono fotografie di riferimento associate ai profili sonori: per i profili con nomi generici viene mostrata un'auto rappresentativa, non un modello ufficiale.</p>
+<div class="note">Le miniature sono caricate dai server di Wikimedia Commons tramite il servizio Special:FilePath (larghezza richiesta: 960 px). Per questo le immagini richiedono una connessione internet e possono dipendere dalla disponibilità del servizio Commons. Ogni fotografia resta attribuita al proprio autore e alla licenza indicata nella relativa pagina.</div>
+<section id="credits" class="grid" aria-live="polite"></section>
+<footer>Rev My Dishwasher · Immagini esterne attribuite ai rispettivi autori. I marchi e i modelli appartengono ai rispettivi titolari.</footer>
+</main>
+<script src="js/cars.js"></script>
+<script src="js/car-photos.js"></script>
+<script>
+(function(){
+  var host=document.getElementById('credits');
+  var cars=window.MOTORSOUND_CARS||[];
+  var photos=window.RMD_CAR_PHOTOS||{};
+  cars.filter(function(c){return photos[c.id];}).forEach(function(c){
+    var p=photos[c.id],card=document.createElement('article');
+    var title=document.createElement('h2');title.textContent=c.name;card.appendChild(title);
+    var caption=document.createElement('p');caption.textContent='Fotografia: '+p.caption;card.appendChild(caption);
+    var author=document.createElement('p');author.textContent='Autore: '+p.author;card.appendChild(author);
+    var license=document.createElement('p');license.className='license';license.textContent='Licenza: '+p.license;card.appendChild(license);
+    var links=document.createElement('div');links.className='source';
+    var src=document.createElement('a');src.href=p.source;src.target='_blank';src.rel='noopener noreferrer';src.textContent='Apri la fotografia su Commons';links.appendChild(src);
+    var lic=document.createElement('a');lic.href=p.licenseUrl;lic.target='_blank';lic.rel='noopener noreferrer';lic.textContent='Testo della licenza';links.appendChild(lic);
+    card.appendChild(links);host.appendChild(card);
+  });
+})();
+</script>
+</body>
+</html>
