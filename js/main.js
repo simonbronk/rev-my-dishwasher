@@ -9,6 +9,8 @@
   var STORE_KEY = 'rev-my-dishwasher.settings.v1';
   var defaults = { carId: 'city-shifter', mode: 'test', manual: false, volume: 0.7, character: 0.65, crackle: 0.25, intensity: 0.55, units: 'kmh' };
   var settings = readSettings();
+  // Start each new session in automatic; manual is an explicit in-session choice.
+  settings.manual = false;
   var cars = (window.MOTORSOUND_CARS || []).filter(function (c) { return c.engine && c.vehicle; });
   var car = findCar(settings.carId) || cars.filter(function (c) { return c.id === 'city-shifter'; })[0] || cars[0];
   var vehicle = new Vehicle(car);
