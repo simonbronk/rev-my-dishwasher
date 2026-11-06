@@ -110,29 +110,63 @@
     var idle = e.idleRpm || 700;
     var redline = e.redlineRpm || 7000;
     var limiter = e.limiterRpm || redline;
+    var intensityValue = clamp(intensity == null ? 0.55 : intensity, 0, 1);
 
-    // TeslaSound uses two shift points: a low-load / relaxed point and a
-    // high-load / full-throttle point. Some profiles provide their own values
-    // (e.g. Shift Maniac: 6300 -> 8000 rpm; F1 Slipstream: 7000 -> 11600 rpm).
-    // For the other automatic profiles, use a conventional ~2500 rpm cruise
-    // shift and keep the full-load shift close to the limiter.
-    var cruiseUp = e.cruiseUpshiftRpm || Math.max(2500, idle * 2);
-    var fullUp = e.upshiftRpm || (e.hardCap ? limiter - 500 : Math.min(redline - 200, limiter - 250));
-    cruiseUp = clamp(cruiseUp, idle + 250, limiter - 100);
+    // Automatic gearbox: the pedal position selects the shift strategy.
+    // A gentle pedal uses a low comfort threshold; pressing harder moves the
+    // upshift point towards the profile's sport/full-throttle values.
+    var demand = clamp(this.throttle * (0.8 + intensityValue * 0.4), 0, 1);
+    var comfortUp = e.comfortUpshiftRpm ||
+      Math.max(idle + 700, Math.min(2600, redline * 0.32));
+    comfortUp = clamp(comfortUp, idle + 250, limiter - 100);
+
+    // Preserve each vehicle profile's own sporting and full-throttle shift
+    // points, but do not use its racing/cruise value for light pedal inputs.
+    var cruiseUp = e.cruiseUpshiftRpm ||
+      Math.max(comfortUp + 900, Math.min(redline * 0.56, limiter - 550));
+    var fullUp = e.upshiftRpm ||
+      (e.hardCap ? limiter - 500 : Math.min(redline - 200, limiter - 250));
+    cruiseUp = clamp(Math.max(comfortUp + 300, cruiseUp), comfortUp + 300, limiter - 100);
     fullUp = clamp(Math.max(cruiseUp, fullUp), cruiseUp, limiter - 50);
 
-    // More pedal means a later shift. Intensity raises or lowers how much
-    // throttle demand is translated into a late-shift request. Squaring the
-    // demand keeps light pedal inputs close to the cruise point, while a
-    // hard press moves the shift point progressively towards fullUp.
-    var intensityValue = clamp(intensity == null ? 0.55 : intensity, 0, 1);
-    var shiftDemand = clamp(this.throttle * (0.55 + intensityValue * 0.9), 0, 1);
-    var shiftBlend = shiftDemand * shiftDemand;
-    var up = cruiseUp + (fullUp - cruiseUp) * shiftBlend;
+    // Progress from comfort to cruise upshifts over the first 75% of pedal
+    // demand, then blend to the profile's full-throttle shift point.
+    var up;
+    if (demand <= 0.75) {
+      var relaxedBlend = Math.pow(clamp(demand / 0.75, 0, 1), 1.65);
+      up = comfortUp + (cruiseUp - comfortUp) * relaxedBlend;
+    } else {
+      var sportBlend = Math.pow(clamp((demand - 0.75) / 0.25, 0, 1), 1.15);
+      up = cruiseUp + (fullUp - cruiseUp) * sportBlend;
+    }
 
-    // Downshift at low engine speed, with hysteresis: do not undo an upshift
-    // merely because the next ratio caused a normal drop in rpm.
-    var down = e.downshiftRpm || Math.max(idle * 1.35, Math.min(cruiseUp * 0.2, 1900));
+    // Kickdown: when the driver presses deeply at low/mid rpm, select the
+    // lower ratio that brings the engine closest to its useful upper band,
+    // without exceeding the limiter. Skip gears when the ratios call for it.
+    if (demand >= 0.68 && this.gear > 1) {
+      var kickdownTrigger = idle + (fullUp - idle) * 0.55;
+      if (rpm < kickdownTrigger) {
+        var kickdownTarget = idle + (fullUp - idle) * (0.68 + 0.08 * demand);
+        var kickdownMax = Math.min(limiter - 300, kickdownTarget + (fullUp - idle) * 0.08);
+        var bestGear = 0;
+        var bestDifference = Infinity;
+        for (var candidate = 1; candidate < this.gear; candidate++) {
+          var candidateRpm = this.gearRpm(this.speed, candidate);
+          if (candidateRpm <= rpm * 1.2 || candidateRpm > kickdownMax) continue;
+          var difference = Math.abs(candidateRpm - kickdownTarget);
+          if (difference < bestDifference) {
+            bestDifference = difference;
+            bestGear = candidate;
+          }
+        }
+        if (bestGear && this._beginShift(bestGear, false)) return;
+      }
+    }
+
+    // Low-rpm downshift with hysteresis: after an upshift, allow the expected
+    // rpm drop before selecting the previous ratio again.
+    var down = e.downshiftRpm ||
+      Math.max(idle * 1.12, Math.min(idle + 220, comfortUp * 0.38));
 
     if (rpm >= up && this.gear < this.ratios.length) {
       this._beginShift(this.gear + 1, false);
@@ -196,7 +230,7 @@
     this._autoShift(dt, rpm, intensity);
 
     // A downshift uses a short rev-match ramp before the lower ratio engages.
-    // Its target is recalculated from current road speed on every frame.
+    // The target rpm is fixed at shift start, as in a real rev-match event.
     var shiftBlipLoad = 0;
     if (this.pendingShift) {
       var shifting = this.pendingShift;
