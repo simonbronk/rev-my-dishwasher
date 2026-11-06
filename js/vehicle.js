@@ -1,301 +1,451 @@
 /*
- * Vehicle bridge for Rev My Dishwasher.
- * This file does not synthesize sound: it converts GPS / pedal input into the
- * parameter messages expected by the unmodified TeslaSound EngineDSP.
+ * vehicle.js — virtual drivetrain.
+ *
+ * Turns road speed into what a combustion car would be doing at that speed:
+ * gear, engine rpm, combustion load, overrun and ignition cut. Road speed
+ * comes either from GPS (with throttle estimated from acceleration) or from a
+ * small physics model driven by the on-screen pedals (test-drive mode).
  */
 (function (global) {
   'use strict';
 
-  function clamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+  var G = 9.81;
+  var RHO = 1.2;
+  var TWO_PI = Math.PI * 2;
+
+  function clamp(x, lo, hi) { return x < lo ? lo : x > hi ? hi : x; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function follow(dt, tau) { return 1 - Math.exp(-dt / tau); }
+  function smoothstep(t) { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); }
+
+  var START_CRANK_S = 0.9;
+  var START_CATCH_S = 1.3;
+  var START_DONE_S = 2.6;
+  // Test drive: below this speed the Gas pedal's hold zone pulls away gently
+  // instead of holding (holding a standstill would just sit there).
+  var HOLD_MIN_MPS = 10 / 3.6;
+  // Test drive: the drive fades out over the last rpm below the limiter, and
+  // an engine held inside this band counts as sitting on it.
+  var LIMIT_BAND_RPM = 60;
 
   function Vehicle(car) {
-    this.car = car;
-    this.cfg = car.vehicle || {};
-    this.engine = car.engine || {};
-    this.ratios = this.cfg.ratios && this.cfg.ratios.length ? this.cfg.ratios.slice() : [1];
-    this.gear = 1;
-    this.manual = false;
-    this.speed = 0;
-    this.accel = 0;
-    this.rpm = this.engine.idleRpm || 0;
-    this.throttle = 0;
-    this.load = 0;
-    this.overrun = 0;
-    this.cut = 0;
-    this.revPedal = 0;
-    this.clutch = 0;
-    this.clutchUntil = 0;
-    this.shiftLock = 0;
-    this.pendingShift = null;
-    this.shiftCutTimer = 0;
-    this.clicks = [];
-    this.neutral = false;
-    this.maxSpeed = (this.cfg.maxSpeedKmh || 280) / 3.6;
+    this.e = car.engine;
+    this.p = car.vehicle;
+    // Electric motor: one fixed gear, no idle, no start-up, regen instead of overrun.
+    this.electric = car.engine.type === 'electric';
+    this.intensity = 0.5;
+    this.reset();
+    this.running = false;
   }
 
-  Vehicle.prototype.gearRpm = function (speed, gear) {
-    var circumference = this.cfg.tireCircumferenceM || 2.15;
-    var finalDrive = this.cfg.finalDrive || 1;
-    var ratio = this.ratios[clamp((gear || this.gear) - 1, 0, this.ratios.length - 1)] || 1;
-    return Math.max(0, speed) / circumference * 60 * ratio * finalDrive;
+  Vehicle.prototype.reset = function () {
+    this.speed = 0;
+    this.accel = 0;
+    this.gear = 1;
+    this.neutral = true;
+    this.rpm = 0;
+    this.throttle = 0;
+    this.revPedal = 0;
+    this.load = 0;
+    this.driveLoad = 0;
+    this.overrun = 0;
+    this.heat = 0;
+    this.cut = 0;
+    this.shift = null;
+    this.sinceShift = 10;
+    this.blip = 0;
+    this.limiterCut = false;
+    this.time = 0;
+    this.startT = 0;
+    this.clicks = [];      // gear lever clicks (strengths) for the synthesizer; the page drains it
+    this.leverT = -10;
+    this.clutch = 0;
+    this.holdSpeed = 0;    // test drive: the speed being held, 0 when not holding
+  };
+
+  Vehicle.prototype.start = function () {
+    this.reset();
+    this.running = true;
+  };
+
+  Vehicle.prototype.stop = function () {
+    this.running = false;
+  };
+
+  // Bring the car to a standstill in place (used before the demo run).
+  Vehicle.prototype.park = function () {
+    this.speed = 0;
+    this.accel = 0;
+    this.gear = 1;
+    this.shift = null;
+  };
+
+  Vehicle.prototype.gearRpm = function (gear) {
+    var p = this.p;
+    return this.speed / p.tireCircumferenceM * 60 * p.ratios[gear - 1] * p.finalDrive;
+  };
+
+  Vehicle.prototype.torqueAt = function (rpm) {
+    var x = (rpm - this.e.peakTorqueRpm) / 4000;
+    return this.e.peakTorqueNm * clamp(1 - 0.7 * x * x, 0.45, 1);
   };
 
   Vehicle.prototype.gearLabel = function () {
-    if (this.engine.type === 'electric' || this.ratios.length === 1) return 'D';
-    return String(this.gear);
+    if (this.electric) return 'D';
+    return this.neutral ? 'N' : String(this.gear);
   };
 
-  Vehicle.prototype.shift = function (delta) {
-    if (!this.manual || this.ratios.length < 2 || this.pendingShift) return;
-    var next = clamp(this.gear + delta, 1, this.ratios.length);
-    if (next === this.gear) return;
-    this._beginShift(next, true);
+  // GPS mode: how hard would the virtual car's driver be pressing the pedal to
+  // match the measured acceleration? "intensity" makes it more eager.
+  Vehicle.prototype._estimateThrottle = function (v, a) {
+    var p = this.p;
+    if (a < -0.25) return 0;
+    var resist = 0.5 * RHO * p.cdA * v * v / p.massKg + p.crr * G;
+    var aMax = Math.min(p.maxAccel, p.peakPowerKw * 1000 * p.drivetrainEff / (p.massKg * Math.max(v, 4)));
+    var sensitivity = lerp(1.2, 3.2, this.intensity);
+    return clamp((a + resist) / aMax * sensitivity, 0, 1);
   };
 
-  // A downshift is prepared at the engine speed dictated by the lower ratio.
-  // The DSP receives the same rpm/load/clutch/cut signals as TeslaSound.
-  Vehicle.prototype._beginShift = function (nextGear, manual) {
-    var fromGear = this.gear;
-    if (nextGear === fromGear || nextGear < 1 || nextGear > this.ratios.length) return false;
-
-    var downshift = nextGear < fromGear;
-    var idle = this.engine.idleRpm || 700;
-    var redline = this.engine.redlineRpm || 7000;
-    var limiter = this.engine.limiterRpm || redline;
-    var currentRpm = Math.max(idle, this.rpm || this.gearRpm(this.speed, fromGear));
-    var targetRpm = this.gearRpm(this.speed, nextGear);
-    var combustion = this.engine.type !== 'electric' && this.engine.type !== 'thruster';
-
-    // Do not select a lower ratio that would put the engine beyond its limiter.
-    if (downshift && combustion && targetRpm > limiter + 35) return false;
-
-    if (downshift && combustion && this.speed > 0.8 && targetRpm > currentRpm + 80) {
-      // Briefly bring the engine to the lower gear's wheel-synchronous rpm
-      // before engaging it: this is the rev-match used for downshifts.
-      this.pendingShift = {
-        fromGear: fromGear,
-        toGear: nextGear,
-        startRpm: currentRpm,
-        targetRpm: targetRpm,
-        elapsed: 0,
-        duration: 0.18,
-        manual: !!manual
-      };
-      this.shiftLock = 0.42;
-    } else {
-      this.gear = nextGear;
-      this.shiftLock = downshift ? 0.22 : 0.18;
-      if (manual) this.clicks.push(downshift ? 0.85 : 1);
-    }
-
-    if (manual) {
-      this.clutch = 1;
-      this.clutchUntil = performance.now() + 180;
-    } else if (!downshift && combustion && this.throttle >= 0.8) {
-      // The original DSP's cut input is also used for a full-throttle upshift.
-      this.shiftCutTimer = Math.max(this.shiftCutTimer, 0.08);
-    }
-    return true;
-  };
-
-  Vehicle.prototype.setManual = function (enabled) {
-    this.manual = !!enabled && this.ratios.length > 1;
-  };
-
-  Vehicle.prototype._autoShift = function (dt, rpm, intensity) {
-    this.shiftLock = Math.max(0, this.shiftLock - dt);
-    if (this.manual || this.pendingShift || this.ratios.length < 2 || this.shiftLock > 0) return;
-
-    var e = this.engine;
-    var idle = e.idleRpm || 700;
-    var redline = e.redlineRpm || 7000;
-    var limiter = e.limiterRpm || redline;
-    var torquePeak = e.peakTorqueRpm || (idle + (redline - idle) * 0.6);
-    var intensityValue = clamp(intensity == null ? 0.55 : intensity, 0, 1);
-    var demand = clamp(this.throttle * (0.85 + intensityValue * 0.3), 0, 1);
-
-    // The engine's own torque band defines the comfort and sport shift points.
-    // Explicit profile values remain authoritative for special high-rev cars.
-    var comfortUp = e.comfortUpshiftRpm || Math.max(idle + 300, torquePeak * 0.55);
-    comfortUp = clamp(comfortUp, idle + 250, limiter - 700);
-
-    var sportUp = e.cruiseUpshiftRpm || Math.max(comfortUp + 250, torquePeak * 0.82);
-    sportUp = clamp(Math.max(comfortUp + 250, sportUp), comfortUp + 250, limiter - 300);
-
-    var fullUp = e.upshiftRpm ||
-      (e.hardCap
-        ? limiter - 500
-        : Math.min(redline - Math.max(180, redline * 0.035), limiter - 150));
-    fullUp = clamp(Math.max(sportUp + 150, fullUp), sportUp + 150, limiter - 50);
-
-    // Downshift floor is also used below to guarantee that an upshift does
-    // not immediately fall below the gearbox's own downshift threshold.
-    var down = e.downshiftRpm ||
-      Math.max(idle + 120, Math.min(idle + 500, torquePeak * 0.3));
-
-    var up;
-    if (demand <= 0.7) {
-      var comfortBlend = Math.pow(clamp(demand / 0.7, 0, 1), 1.55);
-      up = comfortUp + (sportUp - comfortUp) * comfortBlend;
-    } else {
-      var sportBlend = Math.pow(clamp((demand - 0.7) / 0.3, 0, 1), 1.15);
-      up = sportUp + (fullUp - sportUp) * sportBlend;
-    }
-
-    // Use actual adjacent ratios and the downshift threshold to prevent
-    // hunting between gears after a shift, including close-ratio gearboxes.
-    if (this.gear < this.ratios.length) {
-      var currentRatio = this.ratios[this.gear - 1] || 1;
-      var nextRatio = this.ratios[this.gear] || currentRatio;
-      var rpmDrop = clamp(nextRatio / currentRatio, 0.05, 1);
-      var demandBlend = Math.pow(demand, 0.8);
-      var minimumAfterShift = Math.max(
-        idle + 250,
-        torquePeak * (0.35 + demandBlend * 0.17),
-        down * 1.15
-      );
-      up = Math.min(limiter - 50, Math.max(up, minimumAfterShift / rpmDrop));
-    }
-
-    // A strong pedal request selects the lower ratio that puts the engine
-    // near the upper part of its useful band. Multiple gears may be skipped,
-    // but a candidate that would over-rev is never selected.
-    if (demand >= 0.68 && this.gear > 1 && rpm < torquePeak * 0.9) {
-      var kickdownTarget = torquePeak + (fullUp - torquePeak) * 0.65;
-      var kickdownCeiling = Math.min(limiter - 250, kickdownTarget + (fullUp - torquePeak) * 0.08);
-      var bestGear = 0;
-      var bestDifference = Infinity;
-      for (var candidate = 1; candidate < this.gear; candidate++) {
-        var candidateRpm = this.gearRpm(this.speed, candidate);
-        if (candidateRpm <= rpm * 1.15 || candidateRpm > kickdownCeiling) continue;
-        var difference = Math.abs(candidateRpm - kickdownTarget);
-        if (difference < bestDifference) {
-          bestDifference = difference;
-          bestGear = candidate;
-        }
+  // Test-drive mode: integrate speed from engine torque, drag and brakes.
+  Vehicle.prototype._physics = function (dt, brake) {
+    var p = this.p, e = this.e, v = this.speed;
+    var ratio = p.ratios[this.gear - 1] * p.finalDrive;
+    var rWheel = p.tireCircumferenceM / TWO_PI;
+    var force = 0;
+    if (!this.neutral && this.electric) {
+      // Full force from a standstill, then constant power. Off the
+      // accelerator the motor regenerates (one-pedal driving).
+      force = this.driveLoad * Math.min(p.maxAccel * p.massKg, p.peakPowerKw * 1000 * p.drivetrainEff / Math.max(v, 1));
+      if (this.throttle < 0.05 && v > 0.5) force -= p.regenDecel * p.massKg;
+    } else if (!this.neutral) {
+      // The limiter cuts the drive as the wheels bring the engine up to it,
+      // so in top gear the car tops out there instead of the revs staying
+      // pinned while the speed keeps climbing.
+      var fuel = clamp((e.limiterRpm - this.gearRpm(this.gear)) / LIMIT_BAND_RPM, 0, 1);
+      force = this.torqueAt(this.rpm) * this.driveLoad * fuel * ratio * p.drivetrainEff / rWheel;
+      if (this.throttle < 0.05 && v > 0.5) {
+        force -= e.engineBrakeNm * ratio / rWheel * clamp(this.rpm / e.redlineRpm, 0.2, 1);
       }
-      if (bestGear && this._beginShift(bestGear, false)) return;
+    }
+    if (v > 0.05) force -= 0.5 * RHO * p.cdA * v * v + p.crr * p.massKg * G;
+    force -= brake * p.massKg * 9;
+    var a = Math.min(force / p.massKg, p.maxAccel);
+    v += a * dt;
+    if (v <= 0) { v = 0; a = Math.max(a, 0); }
+    if (p.maxSpeedKmh && v >= p.maxSpeedKmh / 3.6) { v = p.maxSpeedKmh / 3.6; a = Math.min(a, 0); }
+    this.speed = v;
+    this.accel = a;
+  };
+
+  Vehicle.prototype._startShift = function (to) {
+    var up = to > this.gear;
+    if (this.p.gearbox === 'manual') {
+      this._startHandShift(to, up);
+      return;
+    }
+    this.shift = {
+      up: up,
+      t: 0,
+      dur: up ? lerp(0.4, 0.2, this.throttle) : 0.3,
+      from: this.rpm,
+      hard: up && this.throttle > 0.6
+    };
+    this.gear = to;
+    this.sinceShift = 0;
+    if (!up) this.blip = 0.18; // rev-matching throttle blip
+  };
+
+  // Manual gearbox: lift off, clutch down, move the lever, let the clutch
+  // back out. While the clutch is down the engine runs free, so the revs
+  // audibly fall away between gears; on the way down the driver blips the
+  // throttle (heel-and-toe) to bring the revs up to the lower gear. No
+  // ignition cut is involved.
+  Vehicle.prototype._startHandShift = function (to, up) {
+    var thr = this.throttle;
+    var lift = 0.05;                                     // throttle closes, clutch goes down
+    var bite = lift + (up ? lerp(0.36, 0.22, thr) : 0.3); // clutch starts to bite
+    this.shift = {
+      up: up,
+      manual: true,
+      t: 0,
+      dur: bite + (up ? lerp(0.18, 0.1, thr) : 0.2),    // engine caught by the new gear
+      from: this.rpm,
+      hard: false,
+      lift: lift,
+      blipEnd: up ? 0 : 0.25,                            // heel-and-toe blip
+      bite: bite,
+      biteRpm: -1
+    };
+    this.gear = to;
+    this.sinceShift = 0;
+  };
+
+  Vehicle.prototype._handShiftRpm = function (dt, rpm, tgt, idle) {
+    var sh = this.shift;
+    if (sh.t < sh.lift) return rpm;
+    if (sh.t < sh.bite) {
+      if (sh.t < sh.blipEnd) return rpm + (tgt * 1.04 - rpm) * follow(dt, 0.07);
+      return Math.max(idle, rpm - Math.max(1500, rpm * 0.55) * dt);
+    }
+    // The clutch drags the engine onto the new gear's speed.
+    if (sh.biteRpm < 0) sh.biteRpm = rpm;
+    return sh.biteRpm + (tgt - sh.biteRpm) * smoothstep((sh.t - sh.bite) / (sh.dur - sh.bite));
+  };
+
+  // One click per shift: the lever going into the new gear, early while the
+  // clutch is down (after the blip on a downshift).
+  Vehicle.prototype._handShiftClicks = function (t0, t1) {
+    var sh = this.shift, into = sh.up ? sh.lift + 0.2 * (sh.bite - sh.lift) : sh.blipEnd + 0.03;
+    if (t0 < into && t1 >= into) this._lever(1);
+  };
+
+  Vehicle.prototype._lever = function (strength) {
+    if (this.running && this.startT >= START_DONE_S && this.clicks.length < 8) this.clicks.push(strength);
+  };
+
+  Vehicle.prototype._autoShift = function (braking) {
+    if (this.shift) return;
+    var e = this.e, n = this.p.ratios.length, thr = this.throttle, I = this.intensity;
+    var rpm = this.gearRpm(this.gear);
+    var upRpm = lerp(e.cruiseUpshiftRpm || 1900 + 700 * I, e.upshiftRpm || e.redlineRpm - 250, Math.pow(thr, 1.3));
+    // Normally a shift is followed by a short pause (longer by hand). A
+    // hard-capped engine may skip it for an upshift, so the revs can never
+    // run into the limiter.
+    var pause = this.p.gearbox === 'manual' ? 1.3 : 0.6;
+    if (this.sinceShift < pause && !(e.hardCap && this.gear < n && rpm > upRpm)) return;
+
+    if (this.gear < n && this.accel > -0.2 && rpm > upRpm &&
+        this.gearRpm(this.gear + 1) > e.idleRpm * 1.3) {
+      this._startShift(this.gear + 1);
+      return;
+    }
+    if (this.gear === 1) return;
+
+    // Kickdown: drop as many gears as keep the engine below ~65% of redline.
+    if (thr > 0.75 && rpm < e.redlineRpm * 0.55) {
+      var g = this.gear;
+      while (g > 1 && this.gearRpm(g - 1) < e.redlineRpm * 0.65) g--;
+      if (g < this.gear) {
+        this._startShift(g);
+        return;
+      }
     }
 
-    if (rpm >= up && this.gear < this.ratios.length) {
-      this._beginShift(this.gear + 1, false);
-    } else if (rpm < down && this.gear > 1) {
-      this._beginShift(this.gear - 1, false);
+    // A high-revving engine can set downshiftRpm, the revs it never drops
+    // below before a lower gear goes in; the road-car points sit under its idle.
+    var floor = e.downshiftRpm || 0;
+    var lower = this.gearRpm(this.gear - 1);
+    var coasting = thr < 0.05 && this.accel < -0.3;
+    if (coasting) {
+      var coastRpm = Math.max(lerp(1300, 2100, I) + 400 * braking, floor);
+      if (rpm < coastRpm && lower < e.redlineRpm * 0.7) this._startShift(this.gear - 1);
+    } else {
+      var downRpm = Math.max(lerp(1050, 3000 + 600 * I, thr), floor);
+      if (rpm < downRpm && lower < upRpm - 250) this._startShift(this.gear - 1);
     }
   };
 
-  Vehicle.prototype.update = function (dt, input, intensity) {
-    var e = this.engine, v = this.cfg;
-    var idle = e.idleRpm || 0;
-    var redline = e.redlineRpm || 7000;
-    var limiter = e.limiterRpm || redline;
-    var rev = clamp(input.rev || 0, 0, 1);
-    var gas = clamp(input.gas || 0, 0, 1);
-    var brake = clamp(input.brake || 0, 0, 1);
-    var intensityScale = 0.75 + clamp(intensity == null ? 0.55 : intensity, 0, 1) * 0.5;
-    var oldSpeed = this.speed;
+  Vehicle.prototype._updateRpm = function (dt, idle) {
+    var e = this.e, rpm = this.rpm;
 
-    if (input.source === 'gps') {
-      this.speed = clamp(input.speed || 0, 0, 120);
-      this.accel = clamp(input.accel || 0, -10, 8);
-      var mass = v.massKg || 1700;
-      var cdA = v.cdA || 0.65;
-      var crr = v.crr || 0.011;
-      var drag = 0.5 * 1.225 * cdA * this.speed * this.speed;
-      var rolling = mass * 9.81 * crr;
-      var force = Math.max(0, mass * this.accel + drag + rolling);
-      var powerKw = force * this.speed / 1000;
-      var peakPower = (v.peakPowerKw || 350) * (v.drivetrainEff || 0.9);
-      var accelDemand = Math.max(0, this.accel) / Math.max(1, v.maxAccel || 7);
-      var powerDemand = powerKw / Math.max(1, peakPower);
-      this.throttle = clamp(Math.max(accelDemand, powerDemand) * intensityScale, 0, 1);
-    } else {
-      var maxAccel = Math.max(1.5, v.maxAccel || 6.5) * intensityScale;
-      var brakeDecel = 10.5;
-      var dragAccel = 0.5 * 1.225 * (v.cdA || 0.65) * this.speed * this.speed / Math.max(900, v.massKg || 1700);
-      var rollingAccel = 9.81 * (v.crr || 0.011);
-      this.accel = gas * maxAccel - brake * brakeDecel - dragAccel - rollingAccel;
-      this.speed = clamp(this.speed + this.accel * dt, 0, this.maxSpeed);
-      if (brake > 0 && this.speed < 0.25) this.speed = 0;
-      this.throttle = gas;
+    if (!this.running) {
+      this.rpm = Math.max(0, rpm - Math.max(rpm * 2.5, 300) * dt);
+      return;
     }
 
-    this.shiftCutTimer = Math.max(0, this.shiftCutTimer - dt);
+    if (this.electric) {
+      // Geared straight to the wheels.
+      this.rpm = rpm + (this.gearRpm(1) - rpm) * follow(dt, 0.06);
+      return;
+    }
 
-    var rpm = this.gearRpm(this.speed);
-    if (this.engine.type === 'electric') {
+    if (this.startT < START_DONE_S) {
+      var t = this.startT;
+      if (t < START_CRANK_S) {
+        rpm = 230 + 60 * Math.sin(t * TWO_PI * 6);
+      } else if (t < START_CATCH_S) {
+        rpm = Math.min(1500, rpm + 4500 * dt);
+      } else {
+        rpm += (idle - rpm) * follow(dt, 0.35);
+      }
+      this.rpm = rpm;
+      return;
+    }
+
+    if (this.neutral) {
+      // Free revving: unloaded engine, quick to spin up, slower to fall.
+      var pedal = this.revPedal;
+      // Aim past the limiter so the revs reach it and bounce off the cut (a
+      // hard cap still keeps them from going past it).
+      var target = idle + pedal * (e.limiterRpm + (e.softLimiter ? 0 : 200) - idle);
+      if (this.limiterCut) {
+        rpm -= 4500 * dt;
+      } else if (rpm < target) {
+        rpm = Math.min(target, rpm + (2500 + 9000 * pedal) * dt);
+      } else {
+        rpm = Math.max(target, rpm - Math.max(1200, rpm * 0.9) * dt);
+      }
+      if (e.hardCap || e.softLimiter) rpm = Math.min(rpm, e.limiterRpm);
+      // A soft limiter holds the revs at the limit instead of bouncing off a cut.
+      if (rpm >= e.limiterRpm && !e.softLimiter) this.limiterCut = true;
+      else if (rpm < e.limiterRpm - 250) this.limiterCut = false;
+      this.rpm = rpm;
+      return;
+    }
+
+    var wheel = this.gearRpm(this.gear);
+    var slip = 0;
+    if (this.gear <= 2) slip = idle + this.throttle * (e.launchRpm - idle) * (this.gear === 1 ? 1 : 0.5);
+    var tgt = Math.max(wheel, idle, slip);
+    if (this.shift && this.shift.manual) {
+      rpm = this._handShiftRpm(dt, rpm, tgt, idle);
+    } else if (this.shift) {
+      rpm = this.shift.from + (tgt - this.shift.from) * smoothstep(this.shift.t / this.shift.dur);
+    } else {
+      rpm += (tgt - rpm) * follow(dt, 0.06);
+    }
+    // Top gear flat out holds the engine just under the limiter (the drive
+    // fades out there); cap it and bounce off the cut.
+    if (rpm >= e.limiterRpm - LIMIT_BAND_RPM) {
+      rpm = e.limiterRpm;
+      this.limiterCut = !e.softLimiter && (this.time * 12) % 1 < 0.4;
+    } else {
+      this.limiterCut = false;
+    }
+    this.rpm = rpm;
+  };
+
+  /*
+   * input: { source: 'gps' | 'demo', speed, accel   (gps)
+   *                                  gas, brake      (demo, 0..1)
+   *                                  hold            (demo: keep the current speed)
+   *          rev (0..1, free-rev pedal used while stationary) }
+   */
+  Vehicle.prototype.update = function (dt, input) {
+    var e = this.e;
+    this.time += dt;
+    if (this.running) this.startT += dt;
+    this.sinceShift += dt;
+    if (this.blip > 0) this.blip -= dt;
+    if (this.shift) {
+      var t0 = this.shift.t;
+      this.shift.t += dt;
+      if (this.shift.manual) this._handShiftClicks(t0, this.shift.t);
+      if (this.shift.t >= this.shift.dur) this.shift = null;
+    }
+
+    var demand, braking, wasNeutral = this.neutral;
+    if (input.source === 'demo') {
+      braking = input.brake || 0;
+      if (input.hold && !braking && (this.holdSpeed || this.speed >= HOLD_MIN_MPS)) {
+        // Hold the speed the car had when the hold began, on the light
+        // throttle steady cruising takes (the same as on GPS).
+        if (!this.holdSpeed) this.holdSpeed = this.speed;
+        this.speed = this.holdSpeed;
+        this.accel = 0;
+        demand = this._estimateThrottle(this.speed, 0);
+        this.neutral = false;
+      } else {
+        this.holdSpeed = 0;
+        demand = input.gas || 0;
+        this.neutral = this.speed < 0.5 && demand < 0.05;
+        this._physics(dt, braking);
+      }
+    } else {
+      this.speed = input.speed;
+      this.accel = input.accel;
+      demand = this._estimateThrottle(this.speed, this.accel);
+      braking = this.accel < -2.5 ? 1 : 0;
+      this.neutral = this.speed < 0.5;
+    }
+    // Manual: into first to pull away, back to neutral at a stop. Rate-limited,
+    // so creeping in traffic doesn't rattle the lever.
+    if (this.p.gearbox === 'manual' && this.neutral !== wasNeutral && this.time - this.leverT > 1.5) {
+      this.leverT = this.time;
+      this._lever(this.neutral ? 0.6 : 1);
+    }
+    this.throttle += (demand - this.throttle) * follow(dt, demand > this.throttle ? 0.12 : 0.25);
+    var rev = this.neutral && !this.electric ? (input.rev || 0) : 0;
+    this.revPedal += (rev - this.revPedal) * follow(dt, rev > this.revPedal ? 0.06 : 0.1);
+
+    if (this.neutral) {
       this.gear = 1;
-      rpm = this.speed < 0.25 ? 0 : rpm;
-    } else if (this.speed < 0.6 && rev > 0) {
-      rpm = idle + rev * Math.max(0, redline - idle) * 0.78;
-    } else if (this.speed < 1.5 && this.throttle > 0.08 && this.ratios.length > 1) {
-      var launch = e.launchRpm || idle;
-      rpm = Math.max(rpm, idle + (launch - idle) * this.throttle);
-    } else if (this.speed > 0.4 && this.engine.type !== 'thruster') {
-      rpm = Math.max(idle, rpm);
-    }
-
-    var gearBeforeAutoShift = this.gear;
-    this._autoShift(dt, rpm, intensity);
-
-    // A downshift uses a short rev-match ramp before the lower ratio engages.
-    // The target rpm is fixed at shift start, as in a real rev-match event.
-    var shiftBlipLoad = 0;
-    if (this.pendingShift) {
-      var shifting = this.pendingShift;
-      shifting.elapsed = Math.min(shifting.duration, shifting.elapsed + dt);
-      var progress = clamp(shifting.elapsed / shifting.duration, 0, 1);
-      var eased = progress * progress * (3 - 2 * progress);
-      var matchedRpm = shifting.targetRpm;
-      var rpmRise = Math.max(0, matchedRpm - shifting.startRpm);
-      rpm = shifting.startRpm + (matchedRpm - shifting.startRpm) * eased;
-
-      // The throttle blip is proportional to the rpm correction, not a
-      // separate sound effect. It briefly opens the original engine model.
-      var correction = clamp(rpmRise / Math.max(1, redline - idle), 0, 1);
-      shiftBlipLoad = Math.sin(Math.PI * progress) * clamp(0.18 + correction * 1.15, 0, 0.85);
-
-      if (progress >= 1) {
-        this.gear = shifting.toGear;
-        this.pendingShift = null;
-        rpm = this.gearRpm(this.speed);
-        this.shiftLock = Math.max(this.shiftLock, 0.14);
-        if (shifting.manual) this.clicks.push(0.85);
-      }
+      this.shift = null;
     } else {
-      // An upshift engages the next ratio promptly, so the normal wheel-speed
-      // calculation immediately produces the correct rpm drop.
-      if (this.gear !== gearBeforeAutoShift) rpm = this.gearRpm(this.speed);
-      else if (!this.manual && this.engine.type !== 'electric') rpm = Math.max(idle, this.gearRpm(this.speed));
+      this._autoShift(braking);
     }
 
-    if (this.engine.type === 'electric') rpm = this.speed / Math.max(0.1, v.tireCircumferenceM || 2.2) * 60 * (v.ratios && v.ratios[0] || 1) * (v.finalDrive || 1);
-    if (this.speed < 0.4 && rev > 0 && this.engine.type !== 'electric') {
-      rpm = idle + rev * Math.max(0, redline - idle) * 0.78;
-    } else if (this.speed < 0.6 && this.throttle > 0.08 && this.engine.type !== 'electric' && this.engine.type !== 'thruster') {
-      // With the virtual clutch disengaged at standstill, gas must raise RPM
-      // even before the simulated vehicle starts rolling.
-      var freeRevLimit = e.launchRpm || (idle + (redline - idle) * 0.35);
-      rpm = Math.max(rpm, idle + (freeRevLimit - idle) * this.throttle);
+    var idle = e.idleRpm + 18 * Math.sin(this.time * 4.1) + 10 * Math.sin(this.time * 9.7);
+    this._updateRpm(dt, idle);
+    if (this.electric) {
+      this._electricOutput(input);
+      return;
     }
-    if (this.engine.type === 'thruster') rpm = idle;
-    this.rpm = clamp(rpm, idle, limiter + 120);
 
-    var pedalLoad = this.throttle;
-    if (this.speed < 0.5 && rev > 0 && this.engine.type !== 'thruster') pedalLoad = Math.max(pedalLoad, 0.12 + rev * 0.88);
-    if (this.engine.type === 'thruster') pedalLoad = this.throttle;
-    this.load = clamp(Math.max(Math.pow(pedalLoad, 0.82), shiftBlipLoad), 0, 1);
-    var lifting = this.throttle < 0.07;
-    this.overrun = !shiftBlipLoad && lifting && (this.rpm > idle + 350 || this.speed > 1) ? clamp(0.28 + Math.max(0, -this.accel) * 0.18 + (brake * 0.35), 0, 1) : 0;
-    this.cut = this.rpm >= limiter - 35 || this.shiftCutTimer > 0 ? 1 : 0;
-    this.revPedal = rev;
-    this.neutral = this.speed < 0.5;
-    if (this.clutch && performance.now() > this.clutchUntil) this.clutch = 0;
+    // What the synthesizer hears.
+    var pedal = this.neutral ? this.revPedal : this.throttle;
+    var load = pedal, cut = 0, driveLoad = pedal;
+    var sh = this.shift;
+    if (sh && sh.manual) {
+      // Off the throttle while the clutch is down; the throttle comes back in
+      // quickly as the clutch bites, so the engine audibly catches.
+      var bite = sh.t < sh.bite ? 0 : smoothstep((sh.t - sh.bite) / 0.05);
+      load = pedal * bite;
+      driveLoad = pedal * bite;
+      if (sh.t >= sh.lift && sh.t < sh.blipEnd) load = 0.7; // heel-and-toe blip
+    } else if (sh && sh.up && sh.t < sh.dur * 0.75) {
+      load = 0;
+      driveLoad = 0;
+      if (sh.hard) cut = 1; // full-throttle upshift: ignition cut → crack
+    }
+    // 1 while a hand shift has the clutch down.
+    this.clutch = this.running && sh && sh.manual && sh.t >= sh.lift && sh.t < sh.bite ? 1 : 0;
+    if (this.blip > 0) load = Math.max(load, 0.55);
+    // Soft limiter: ease the combustion off over the last 300 rpm.
+    if (e.softLimiter) load *= lerp(1, 0.55, clamp((this.rpm - e.limiterRpm + 300) / 300, 0, 1));
+    // Rev limiter: only the ignition cuts. The throttle stays wide open, so
+    // the engine screams again the moment it fires between the cuts.
+    if (this.limiterCut) cut = 1;
+    if (!this.running) {
+      load = 0;
+      cut = 0;
+    } else if (this.startT < START_DONE_S) {
+      var t = this.startT;
+      load = t < START_CRANK_S ? 0.02 : t < START_CATCH_S ? 0.6 : 0.6 * (1 - (t - START_CATCH_S) / (START_DONE_S - START_CATCH_S));
+    }
+    var idleLoad = this.running ? 0.12 * clamp(1 - (this.rpm - e.idleRpm) / 1500, 0, 1) : 0;
+    this.load = cut && !this.limiterCut ? 0 : Math.max(load, idleLoad);
+    this.driveLoad = driveLoad;
+    this.cut = cut;
+    // Afterfire needs unburnt fuel in a hot exhaust: it is strongest right
+    // after lifting off from hard driving and fades within a few seconds as
+    // the exhaust cools and the ECU cuts fuel on overrun.
+    var rpmN = clamp((this.rpm - e.idleRpm) / (e.redlineRpm - e.idleRpm), 0, 1);
+    var fuel = this.running ? (this.blip > 0 ? Math.max(pedal, 0.55) : pedal) * (0.3 + 0.7 * rpmN) : 0;
+    this.heat += (fuel - this.heat) * follow(dt, fuel > this.heat ? 1 : 2.5);
+    // Holding a steady speed is light throttle, not a closed one.
+    var holding = this.holdSpeed > 0 || (input.source === 'gps' && !this.neutral && this.accel > -0.25);
+    this.overrun = this.running && pedal < 0.06 && this.blip <= 0 && !holding
+      ? clamp((this.rpm - e.idleRpm - 500) / 1500, 0, 1) * clamp(this.heat * 1.5, 0, 1)
+      : 0;
+  };
 
-    // If the GPS reports a sharp deceleration, retain the true speed but avoid
-    // deriving a negative engine load from it.
-    if (input.source === 'gps' && this.speed > 0 && oldSpeed > this.speed + 0.2) this.overrun = Math.max(this.overrun, 0.25);
-    return this;
+  // What the synthesizer hears from an electric motor: load is the
+  // accelerator beyond what holding the current speed takes, so a steady
+  // speed stays quiet and the buzz only swells while speeding up. overrun (1)
+  // means regen: rolling with the foot off, lifting off or braking. On GPS,
+  // holding a steady speed is not regen, and the switch has some hysteresis
+  // so GPS noise can't make it flutter.
+  Vehicle.prototype._electricOutput = function (input) {
+    var regen = input.source === 'gps'
+      ? this.accel < (this.overrun ? -0.1 : -0.3)
+      : this.throttle < 0.06 && !this.holdSpeed;
+    var steady = this._estimateThrottle(this.speed, 0);
+    this.load = this.running ? clamp((this.throttle - steady) / Math.max(1 - steady, 0.05), 0, 1) : 0;
+    this.driveLoad = this.throttle;
+    this.cut = 0;
+    this.clutch = 0;
+    this.overrun = this.running && !this.neutral && regen ? 1 : 0;
   };
 
   global.Vehicle = Vehicle;
