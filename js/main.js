@@ -35,7 +35,7 @@
   var ui = {
     gpsStatus: $('gpsStatus'), audioStatus: $('audioStatus'), rpmDial: $('rpmDial'), speedValue: $('speedValue'), speedUnit: $('speedUnit'), gearValue: $('gearValue'), rpmValue: $('rpmValue'),
     throttleText: $('throttleText'), throttleMeter: $('throttleMeter'), loadText: $('loadText'), loadMeter: $('loadMeter'), driveState: $('driveState'), gpsAccuracy: $('gpsAccuracy'),
-    carSelect: $('carSelect'), carName: $('carName'), carTagline: $('carTagline'), engineBadge: $('engineBadge'), startButton: $('startButton'), startLabel: $('startLabel'), startNote: $('startNote'),
+    carSelect: $('carSelect'), carGallery: $('carGallery'), carName: $('carName'), carTagline: $('carTagline'), engineBadge: $('engineBadge'), startButton: $('startButton'), startLabel: $('startLabel'), startNote: $('startNote'),
     testControls: $('testControls'), manualGears: $('manualGears'), manualGearLabel: $('manualGearLabel'), notice: $('notice'),
     runtimeStatus: $('runtimeStatus'),
     volumeSlider: $('volumeSlider'), characterSlider: $('characterSlider'), crackleSlider: $('crackleSlider'), intensitySlider: $('intensitySlider')
@@ -82,11 +82,55 @@
 
   function renderCarList() {
     ui.carSelect.textContent = '';
+    ui.carGallery.textContent = '';
+    var photoSet = window.RMD_CAR_PHOTOS || {};
+
     cars.forEach(function (c) {
       var option = document.createElement('option');
       option.value = c.id;
       option.textContent = c.name;
       ui.carSelect.appendChild(option);
+
+      var photo = photoSet[c.id] || {};
+      var card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'car-card';
+      card.dataset.carId = c.id;
+      card.setAttribute('aria-pressed', String(c.id === car.id));
+      card.setAttribute('aria-label', 'Seleziona ' + c.name + (photo.caption ? '. Foto: ' + photo.caption : ''));
+      card.title = c.name + (photo.caption ? ' — ' + photo.caption : '');
+
+      if (photo.file) {
+        var image = document.createElement('img');
+        image.src = 'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(photo.file) + '?width=960';
+        image.alt = photo.caption ? 'Fotografia: ' + photo.caption : c.name;
+        image.loading = 'lazy';
+        image.decoding = 'async';
+        image.addEventListener('error', function () {
+          card.classList.add('no-photo');
+          image.remove();
+        }, { once: true });
+        card.appendChild(image);
+      } else {
+        card.classList.add('no-photo');
+      }
+
+      var shade = document.createElement('span');
+      shade.className = 'car-card-shade';
+      shade.setAttribute('aria-hidden', 'true');
+      card.appendChild(shade);
+
+      var tag = document.createElement('span');
+      tag.className = 'car-card-tag';
+      tag.textContent = photo.tag || 'SOUND PROFILE';
+      card.appendChild(tag);
+
+      var name = document.createElement('span');
+      name.className = 'car-card-name';
+      name.textContent = c.name;
+      card.appendChild(name);
+
+      ui.carGallery.appendChild(card);
     });
     ui.carSelect.value = car.id;
   }
@@ -96,6 +140,13 @@
     text(ui.carTagline, car.tagline || 'Profilo sonoro');
     text(ui.engineBadge, engineLabel(car));
     ui.carSelect.value = car.id;
+    if (ui.carGallery) {
+      ui.carGallery.querySelectorAll('.car-card').forEach(function (card) {
+        var selected = card.dataset.carId === car.id;
+        card.classList.toggle('active', selected);
+        card.setAttribute('aria-pressed', String(selected));
+      });
+    }
     document.title = 'Rev My Dishwasher — ' + car.name;
   }
 
@@ -365,6 +416,10 @@
   function bindUI() {
     ui.startButton.addEventListener('click', startEngine);
     ui.carSelect.addEventListener('change', function () { selectCar(ui.carSelect.value); });
+    ui.carGallery.addEventListener('click', function (event) {
+      var card = event.target.closest ? event.target.closest('.car-card[data-car-id]') : null;
+      if (card && ui.carGallery.contains(card)) selectCar(card.dataset.carId);
+    });
     document.querySelectorAll('[data-mode]').forEach(function (button) {
       button.addEventListener('click', function () { setMode(button.dataset.mode); });
     });
