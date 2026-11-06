@@ -291,3 +291,7 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
   .control-panel>.car-gallery{grid-template-rows:repeat(2,60px);grid-auto-columns:minmax(112px,35vw);max-height:132px;gap:7px}
   .car-card-name{font-size:9px}.car-card-tag{font-size:6px}
 }
+
+.photo-credits-link{margin-left:auto;flex:none;color:#ffc48e;font-size:7px;font-weight:950;letter-spacing:.1em;text-decoration:none;white-space:nowrap;opacity:.86}
+.photo-credits-link:hover{opacity:1;text-decoration:underline}
+@media(max-width:560px){.photo-credits-link{font-size:6.5px}}
