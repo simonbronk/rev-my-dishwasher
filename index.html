@@ -58,8 +58,9 @@
           <span class="engine-badge" id="engineBadge">FLAT-6</span>
         </div>
 
-        <label class="field-label" for="carSelect">SCEGLI IL MOTORE</label>
-        <select id="carSelect" class="car-select"></select>
+        <div class="field-label car-picker-label" id="carPickerLabel">SCEGLI L’AUTO <span>· SCORRI PER ESPLORARE</span></div>
+        <div id="carGallery" class="car-gallery" role="group" aria-labelledby="carPickerLabel" aria-label="Galleria dei profili auto"></div>
+        <select id="carSelect" class="car-select" hidden aria-hidden="true" tabindex="-1"></select>
 
         <button class="start-button" id="startButton" type="button">
           <span class="power-symbol">⏻</span><span id="startLabel">AVVIA MOTORE</span><i class="start-led"></i>
@@ -132,12 +133,12 @@
       </section>
     </main>
 
-    <footer class="page-footer"><span>REV MY DISHWASHER</span><span>Non coprire sirene, clacson, avvisi o altri suoni di sicurezza. Usa a volume moderato.</span></footer>
+    <footer class="page-footer"><span>REV MY DISHWASHER</span><span>Non coprire sirene, clacson, avvisi o altri suoni di sicurezza. Usa a volume moderato. · <a href="photo-credits.html">Crediti fotografie</a></span></footer>
   </div>
 
   <script>
     (function () {
-      var boot = window.__RMD_BOOT = { version: '2026.11.06.6', loaded: [], errors: [], ready: false };
+      var boot = window.__RMD_BOOT = { version: '2026.11.06.7', loaded: [], errors: [], ready: false };
       function show(message) {
         var box = document.getElementById('notice');
         var status = document.getElementById('runtimeStatus');
@@ -147,7 +148,7 @@
       window.__RMD_SCRIPT_LOADED = function (name) {
         boot.loaded.push(name);
         var status = document.getElementById('runtimeStatus');
-        if (status) status.textContent = 'APP: moduli caricati ' + boot.loaded.length + '/7 · ' + boot.version;
+        if (status) status.textContent = 'APP: moduli caricati ' + boot.loaded.length + '/8 · ' + boot.version;
       };
       window.__RMD_SCRIPT_FAILED = function (name) {
         var message = 'Impossibile caricare ' + name + '.';
@@ -174,6 +175,7 @@
   <script src="js/gps.js?v=20261105-1" onload="__RMD_SCRIPT_LOADED('gps.js')" onerror="__RMD_SCRIPT_FAILED('gps.js')"></script>
   <script src="js/vehicle.js?v=20261106-teslasound-original-1" onload="__RMD_SCRIPT_LOADED('vehicle.js')" onerror="__RMD_SCRIPT_FAILED('vehicle.js')"></script>
   <script src="js/vehicle-compat.js?v=20261106-1" onload="__RMD_SCRIPT_LOADED('vehicle-compat.js')" onerror="__RMD_SCRIPT_FAILED('vehicle-compat.js')"></script>
-  <script src="js/main.js?v=20261106-teslasound-original-1" onload="__RMD_SCRIPT_LOADED('main.js')" onerror="__RMD_SCRIPT_FAILED('main.js')"></script>
+  <script src="js/car-photos.js?v=20261106-photo-gallery-1" onload="__RMD_SCRIPT_LOADED('car-photos.js')" onerror="__RMD_SCRIPT_FAILED('car-photos.js')"></script>
+  <script src="js/main.js?v=20261106-car-gallery-1" onload="__RMD_SCRIPT_LOADED('main.js')" onerror="__RMD_SCRIPT_FAILED('main.js')"></script>
 </body>
 </html>
