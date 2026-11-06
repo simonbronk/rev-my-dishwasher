@@ -235,3 +235,59 @@ button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid 
   .accelerator-intensity{padding:9px 10px}
   .intensity-control b{font-size:9px}
 }
+
+
+/* Photo garage — compact, two-row horizontal rail inspired by the original car picker. */
+.car-picker-label{
+  display:flex;align-items:center;gap:7px;min-height:13px;color:#a9b9c9;
+}
+.car-picker-label span{color:#75889c;font-size:8px;font-weight:750;letter-spacing:.1em}
+.control-panel>.car-gallery{
+  display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,54px);
+  grid-auto-columns:112px;gap:7px;flex:0 0 auto;width:100%;max-width:100%;
+  max-height:115px;min-height:0;overflow-x:auto;overflow-y:hidden;
+  padding:3px 3px 6px;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;
+  scrollbar-width:thin;scrollbar-color:#526579 #101a25;
+}
+.car-gallery::-webkit-scrollbar{height:5px}
+.car-gallery::-webkit-scrollbar-track{background:#101a25;border-radius:9px}
+.car-gallery::-webkit-scrollbar-thumb{background:#526579;border-radius:9px}
+.car-card{
+  position:relative;display:block;min-width:0;min-height:0;padding:0;overflow:hidden;
+  border:1px solid rgba(138,164,190,.25);border-radius:9px;background:
+    radial-gradient(ellipse at 70% 25%,#34495e 0,transparent 58%),
+    linear-gradient(135deg,#26394d,#0b121b 72%);
+  color:#f5f7fa;text-align:left;cursor:pointer;isolation:isolate;scroll-snap-align:start;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.035);
+  transition:border-color .16s ease,box-shadow .16s ease,transform .16s ease,filter .16s ease;
+}
+.car-card img{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:cover;object-position:center 56%;z-index:-2;opacity:.88;filter:saturate(1.14) contrast(1.04);transition:transform .28s ease,opacity .18s ease}
+.car-card-shade{position:absolute;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(5,10,16,.06) 5%,rgba(5,10,16,.2) 38%,rgba(5,10,16,.92) 100%)}
+.car-card-tag{position:absolute;top:5px;left:6px;max-width:calc(100% - 12px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:3px 5px;border:1px solid rgba(255,255,255,.17);border-radius:4px;background:rgba(5,10,16,.62);color:#e8f0f7;font-size:6px;font-weight:950;letter-spacing:.1em;line-height:1.1;backdrop-filter:blur(6px)}
+.car-card-name{position:absolute;left:7px;right:5px;bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;font-size:9px;font-weight:950;line-height:1.1;letter-spacing:.01em;text-shadow:0 1px 5px #000}
+.car-card:hover{border-color:rgba(255,188,128,.8);filter:brightness(1.12)}
+.car-card:hover img{transform:scale(1.06);opacity:1}
+.car-card.active{border-color:#ffb46f;box-shadow:0 0 0 1px rgba(255,173,103,.65),0 0 18px rgba(255,151,64,.22),inset 0 1px 0 rgba(255,255,255,.2)}
+.car-card.active .car-card-tag{border-color:rgba(255,183,120,.45);color:#ffd3a7;background:rgba(71,38,17,.74)}
+.car-card.no-photo:after{content:"";position:absolute;right:12px;top:15px;width:25px;height:14px;border:2px solid rgba(198,215,231,.35);border-radius:7px 8px 4px 4px;transform:skewX(-12deg);opacity:.75}
+.car-card:focus-visible{outline:2px solid #ffd09f;outline-offset:2px}
+.control-panel>.car-select[hidden]{display:none!important}
+
+@media (min-width:900px) and (orientation:landscape){
+  .control-panel>.car-gallery{grid-template-rows:repeat(2,54px);grid-auto-columns:clamp(96px,8.1vw,116px);max-height:116px}
+}
+@media (min-width:900px) and (orientation:landscape) and (max-height:760px){
+  .control-panel>.car-gallery{grid-template-rows:repeat(2,46px);grid-auto-columns:100px;max-height:100px;gap:6px}
+  .car-card-name{font-size:8px}.car-card-tag{font-size:5.5px;top:4px;left:5px}
+}
+@media (min-width:900px) and (orientation:landscape) and (max-width:1180px){
+  .control-panel>.car-gallery{grid-auto-columns:95px}
+}
+@media (max-width:899px),(orientation:portrait){
+  .control-panel>.car-gallery{grid-template-rows:repeat(2,58px);grid-auto-columns:minmax(108px,30vw);max-height:128px}
+}
+@media (max-width:560px){
+  .car-picker-label{font-size:9px}.car-picker-label span{font-size:7px}
+  .control-panel>.car-gallery{grid-template-rows:repeat(2,60px);grid-auto-columns:minmax(112px,35vw);max-height:132px;gap:7px}
+  .car-card-name{font-size:9px}.car-card-tag{font-size:6px}
+}
