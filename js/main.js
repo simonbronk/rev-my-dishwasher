@@ -7,8 +7,14 @@
   }
 
   var STORE_KEY = 'rev-my-dishwasher.settings.v1';
-  var defaults = { carId: 'city-shifter', mode: 'test', manual: false, volume: 0.7, character: 0.65, crackle: 0.25, intensity: 0.55, units: 'kmh' };
+  var defaults = { carId: 'city-shifter', mode: 'test', manual: false, volume: 1, character: 0.75, crackle: 0.3, intensity: 0.5, units: 'kmh' };
   var settings = readSettings();
+  // Migrate the previous app defaults to TeslaSound's original tuning once,
+  // while preserving any values the user had deliberately changed.
+  if (settings.volume === 0.7) settings.volume = 1;
+  if (settings.character === 0.65) settings.character = 0.75;
+  if (settings.crackle === 0.25) settings.crackle = 0.3;
+  if (settings.intensity === 0.55) settings.intensity = 0.5;
   // Start each new session in automatic; manual is an explicit in-session choice.
   settings.manual = false;
   var cars = (window.MOTORSOUND_CARS || []).filter(function (c) { return c.engine && c.vehicle; });
@@ -285,15 +291,15 @@
     var input;
     if (settings.mode === 'gps') {
       var sample = gps.read();
-      gpsSpeed += (sample.speed - gpsSpeed) * (1 - Math.exp(-dt / 0.22));
-      gpsAccel += (sample.accel - gpsAccel) * (1 - Math.exp(-dt / 0.32));
+      gpsSpeed += (sample.speed - gpsSpeed) * (1 - Math.exp(-dt / 0.25));
+      gpsAccel += (sample.accel - gpsAccel) * (1 - Math.exp(-dt / 0.35));
       input = { source: 'gps', speed: gpsSpeed, accel: gpsAccel, rev: pads.rev };
     } else {
       input = { source: 'test', gas: pads.gas, brake: pads.brake, rev: pads.rev };
     }
     vehicle.update(dt, input, settings.intensity);
 
-    if (engineOn && now - lastParamSent > 30) {
+    if (engineOn && now - lastParamSent > 16) {
       if (vehicle.clicks.length) while (vehicle.clicks.length) audio.click(vehicle.clicks.shift());
       audio.clutch(vehicle.clutch);
       audio.setParams({
