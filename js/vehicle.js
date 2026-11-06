@@ -110,63 +110,75 @@
     var idle = e.idleRpm || 700;
     var redline = e.redlineRpm || 7000;
     var limiter = e.limiterRpm || redline;
+    var torquePeak = e.peakTorqueRpm || (idle + (redline - idle) * 0.6);
     var intensityValue = clamp(intensity == null ? 0.55 : intensity, 0, 1);
 
-    // Automatic gearbox: the pedal position selects the shift strategy.
-    // A gentle pedal uses a low comfort threshold; pressing harder moves the
-    // upshift point towards the profile's sport/full-throttle values.
-    var demand = clamp(this.throttle * (0.8 + intensityValue * 0.4), 0, 1);
-    var comfortUp = e.comfortUpshiftRpm ||
-      Math.max(idle + 700, Math.min(2600, redline * 0.32));
-    comfortUp = clamp(comfortUp, idle + 250, limiter - 100);
+    // Pedal demand is the primary input. The intensity setting only trims its
+    // sensitivity; it does not turn a road car into a racing shift map.
+    var demand = clamp(this.throttle * (0.85 + intensityValue * 0.3), 0, 1);
 
-    // Preserve each vehicle profile's own sporting and full-throttle shift
-    // points, but do not use its racing/cruise value for light pedal inputs.
-    var cruiseUp = e.cruiseUpshiftRpm ||
-      Math.max(comfortUp + 900, Math.min(redline * 0.56, limiter - 550));
+    // Build three shift bands from each engine's own torque curve:
+    // comfort keeps the engine in its usable low/mid range, sport holds it
+    // closer to peak torque, and full load approaches the profile's redline.
+    // Explicit values in special profiles (F1, Shift Maniac, Hellcat) remain
+    // authoritative for their relevant band.
+    var comfortUp = e.comfortUpshiftRpm || Math.max(idle + 300, torquePeak * 0.55);
+    comfortUp = clamp(comfortUp, idle + 250, limiter - 700);
+
+    var sportUp = e.cruiseUpshiftRpm || Math.max(comfortUp + 250, torquePeak * 0.82);
+    sportUp = clamp(Math.max(comfortUp + 250, sportUp), comfortUp + 250, limiter - 300);
+
     var fullUp = e.upshiftRpm ||
-      (e.hardCap ? limiter - 500 : Math.min(redline - 200, limiter - 250));
-    cruiseUp = clamp(Math.max(comfortUp + 300, cruiseUp), comfortUp + 300, limiter - 100);
-    fullUp = clamp(Math.max(cruiseUp, fullUp), cruiseUp, limiter - 50);
+      (e.hardCap
+        ? limiter - 500
+        : Math.min(redline - Math.max(180, redline * 0.035), limiter - 150));
+    fullUp = clamp(Math.max(sportUp + 150, fullUp), sportUp + 150, limiter - 50);
 
-    // Progress from comfort to cruise upshifts over the first 75% of pedal
-    // demand, then blend to the profile's full-throttle shift point.
+    // Smoothly blend comfort -> sport -> full-load shift points.
     var up;
-    if (demand <= 0.75) {
-      var relaxedBlend = Math.pow(clamp(demand / 0.75, 0, 1), 1.65);
-      up = comfortUp + (cruiseUp - comfortUp) * relaxedBlend;
+    if (demand <= 0.7) {
+      var comfortBlend = Math.pow(clamp(demand / 0.7, 0, 1), 1.55);
+      up = comfortUp + (sportUp - comfortUp) * comfortBlend;
     } else {
-      var sportBlend = Math.pow(clamp((demand - 0.75) / 0.25, 0, 1), 1.15);
-      up = cruiseUp + (fullUp - cruiseUp) * sportBlend;
+      var sportBlend = Math.pow(clamp((demand - 0.7) / 0.3, 0, 1), 1.15);
+      up = sportUp + (fullUp - sportUp) * sportBlend;
     }
 
-    // Kickdown: when the driver presses deeply at low/mid rpm, select the
-    // lower ratio that brings the engine closest to its useful upper band,
-    // without exceeding the limiter. Skip gears when the ratios call for it.
-    if (demand >= 0.68 && this.gear > 1) {
-      var kickdownTrigger = idle + (fullUp - idle) * 0.55;
-      if (rpm < kickdownTrigger) {
-        var kickdownTarget = idle + (fullUp - idle) * (0.68 + 0.08 * demand);
-        var kickdownMax = Math.min(limiter - 300, kickdownTarget + (fullUp - idle) * 0.08);
-        var bestGear = 0;
-        var bestDifference = Infinity;
-        for (var candidate = 1; candidate < this.gear; candidate++) {
-          var candidateRpm = this.gearRpm(this.speed, candidate);
-          if (candidateRpm <= rpm * 1.2 || candidateRpm > kickdownMax) continue;
-          var difference = Math.abs(candidateRpm - kickdownTarget);
-          if (difference < bestDifference) {
-            bestDifference = difference;
-            bestGear = candidate;
-          }
+    // Adapt the shift point to the actual ratio step. Avoid an upshift that
+    // would drop the engine below a useful rpm band, especially under load.
+    if (this.gear < this.ratios.length) {
+      var currentRatio = this.ratios[this.gear - 1] || 1;
+      var nextRatio = this.ratios[this.gear] || currentRatio;
+      var rpmDrop = clamp(nextRatio / currentRatio, 0.05, 1);
+      var demandBlend = Math.pow(demand, 0.8);
+      var minimumAfterShift = Math.max(idle + 250, torquePeak * (0.35 + demandBlend * 0.17));
+      up = Math.min(limiter - 50, Math.max(up, minimumAfterShift / rpmDrop));
+    }
+
+    // Kickdown: a strong pedal request selects the lower ratio that puts the
+    // engine near the upper part of its own useful band. It may skip gears,
+    // but it never chooses a ratio that would over-rev the engine.
+    if (demand >= 0.68 && this.gear > 1 && rpm < torquePeak * 0.9) {
+      var kickdownTarget = torquePeak + (fullUp - torquePeak) * 0.65;
+      var kickdownCeiling = Math.min(limiter - 250, kickdownTarget + (fullUp - torquePeak) * 0.08);
+      var bestGear = 0;
+      var bestDifference = Infinity;
+      for (var candidate = 1; candidate < this.gear; candidate++) {
+        var candidateRpm = this.gearRpm(this.speed, candidate);
+        if (candidateRpm <= rpm * 1.15 || candidateRpm > kickdownCeiling) continue;
+        var difference = Math.abs(candidateRpm - kickdownTarget);
+        if (difference < bestDifference) {
+          bestDifference = difference;
+          bestGear = candidate;
         }
-        if (bestGear && this._beginShift(bestGear, false)) return;
       }
+      if (bestGear && this._beginShift(bestGear, false)) return;
     }
 
-    // Low-rpm downshift with hysteresis: after an upshift, allow the expected
-    // rpm drop before selecting the previous ratio again.
+    // Deceleration downshifts are based on engine idle and torque-band data.
+    // Profile-specific values (e.g. the F1's 5,000 rpm) take precedence.
     var down = e.downshiftRpm ||
-      Math.max(idle * 1.12, Math.min(idle + 220, comfortUp * 0.38));
+      Math.max(idle + 120, Math.min(idle + 500, torquePeak * 0.3));
 
     if (rpm >= up && this.gear < this.ratios.length) {
       this._beginShift(this.gear + 1, false);
