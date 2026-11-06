@@ -29,6 +29,7 @@
   var pads = { gas: 0, brake: 0, rev: 0 };
   var testAudioTimer = 0;
   var lastParamSent = 0;
+  var clutchSent = 0;
 
   var $ = function (id) { return document.getElementById(id); };
   var ui = {
@@ -119,7 +120,7 @@
   }
 
   function setManual(enabled) {
-    settings.manual = !!enabled && vehicle.ratios.length > 1;
+    settings.manual = !!enabled && vehicle.p.ratios.length > 1;
     vehicle.setManual(settings.manual);
     $('autoButton').classList.toggle('active', !settings.manual);
     $('manualButton').classList.toggle('active', settings.manual);
@@ -133,6 +134,8 @@
   function stopEngine() {
     engineOn = false;
     gps.stop();
+    vehicle.stop();
+    vehicle.reset();
     audio.stop();
     ui.startButton.classList.remove('running');
     text(ui.startLabel, 'AVVIA MOTORE');
@@ -148,6 +151,11 @@
     setNotice('Inizializzazione del sintetizzatore…');
     ui.startButton.disabled = true;
     audio.start(car.engine).then(function () {
+      vehicle.intensity = settings.intensity;
+      vehicle.start();
+      gpsSpeed = 0;
+      gpsAccel = 0;
+      lastFrame = performance.now();
       engineOn = true;
       ui.startButton.disabled = false;
       ui.startButton.classList.add('running');
@@ -280,28 +288,36 @@
     ui.loadMeter.style.width = percent(load) + '%';
     text(ui.manualGearLabel, String(vehicle.gear));
     text(ui.driveState, settings.mode === 'gps' ? 'GPS DRIVE' : 'TEST DRIVE');
-    $('downGear').disabled = vehicle.gear <= 1;
-    $('upGear').disabled = vehicle.gear >= vehicle.ratios.length;
+    $('downGear').disabled = !engineOn || vehicle.neutral || vehicle.gear <= 1;
+    $('upGear').disabled = !engineOn || vehicle.neutral || vehicle.gear >= vehicle.p.ratios.length;
   }
 
   function tick(now) {
     try {
-    var dt = Math.min(0.08, Math.max(0.001, (now - lastFrame) / 1000));
+    var elapsed = Math.min(0.5, Math.max(0.001, (now - lastFrame) / 1000));
     lastFrame = now;
     var input;
     if (settings.mode === 'gps') {
       var sample = gps.read();
-      gpsSpeed += (sample.speed - gpsSpeed) * (1 - Math.exp(-dt / 0.25));
-      gpsAccel += (sample.accel - gpsAccel) * (1 - Math.exp(-dt / 0.35));
+      gpsSpeed += (sample.speed - gpsSpeed) * (1 - Math.exp(-elapsed / 0.25));
+      gpsAccel += (sample.accel - gpsAccel) * (1 - Math.exp(-elapsed / 0.35));
       input = { source: 'gps', speed: gpsSpeed, accel: gpsAccel, rev: pads.rev };
     } else {
-      input = { source: 'test', gas: pads.gas, brake: pads.brake, rev: pads.rev };
+      input = { source: 'demo', gas: pads.gas, brake: pads.brake, rev: pads.rev };
     }
-    vehicle.update(dt, input, settings.intensity);
+    if (engineOn) {
+      vehicle.intensity = settings.intensity;
+      var steps = Math.max(1, Math.ceil(elapsed / 0.02));
+      var stepDt = elapsed / steps;
+      for (var step = 0; step < steps; step++) vehicle.update(stepDt, input);
+    }
 
     if (engineOn && now - lastParamSent > 16) {
       if (vehicle.clicks.length) while (vehicle.clicks.length) audio.click(vehicle.clicks.shift());
-      audio.clutch(vehicle.clutch);
+      if (vehicle.clutch !== clutchSent) {
+        audio.clutch(vehicle.clutch);
+        clutchSent = vehicle.clutch;
+      }
       audio.setParams({
         rpm: vehicle.rpm,
         load: vehicle.load,
@@ -340,6 +356,7 @@
         settings[key] = Number(input.value) / 100;
         text(output, input.value + '%');
         if (key === 'volume') audio.setVolume(settings.volume);
+        if (key === 'intensity') vehicle.intensity = settings.intensity;
         saveSettings();
       });
     });
@@ -353,8 +370,8 @@
     });
     $('autoButton').addEventListener('click', function () { setManual(false); });
     $('manualButton').addEventListener('click', function () { setManual(true); });
-    $('downGear').addEventListener('click', function () { vehicle.shift(-1); });
-    $('upGear').addEventListener('click', function () { vehicle.shift(1); });
+    $('downGear').addEventListener('click', function () { vehicle.shiftGear(-1); });
+    $('upGear').addEventListener('click', function () { vehicle.shiftGear(1); });
     bindHoldButton($('gasPedal'), 'gas');
     bindHoldButton($('brakePedal'), 'brake');
     bindHoldButton($('revButton'), 'rev');
